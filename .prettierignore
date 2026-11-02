@@ -1,0 +1,9 @@
+node_modules/
+dist/
+output/
+public/avatars/
+public/data/operators.json
+package-lock.json
+.local/
+public/data/live-heat.json*
+.playwright-mcp/

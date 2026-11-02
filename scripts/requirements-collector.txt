@@ -1,0 +1,4 @@
+requests>=2.32,<3
+cryptography>=44
+pywin32>=308; sys_platform == 'win32'
+xhshow>=0.2,<0.3
