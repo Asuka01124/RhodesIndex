@@ -84,11 +84,24 @@ test('职业与阵营组内或关系，组间和性别取交集', () => {
   assert.equal(matchesOperator(operator, { ...EMPTY_FILTERS, factions: ['谢拉格'] }), false);
 });
 
-test('支持中英日名称检索，最低星级和关注过滤', () => {
+test('支持中英日名称检索、星级档位和关注过滤', () => {
   assert.equal(matchesOperator(operator, EMPTY_FILTERS, '  LEMUEN '), true);
   assert.equal(matchesOperator(operator, EMPTY_FILTERS, 'レミュアン'), true);
   assert.equal(
-    matchesOperator({ ...operator, rarity: 5 }, { ...EMPTY_FILTERS, minRarity: 6 }),
+    matchesOperator({ ...operator, rarity: 5 }, { ...EMPTY_FILTERS, rarityTiers: [6] }),
+    false,
+  );
+  assert.equal(matchesOperator(operator, { ...EMPTY_FILTERS, rarityTiers: [6] }), true);
+  assert.equal(
+    matchesOperator({ ...operator, rarity: 5 }, { ...EMPTY_FILTERS, rarityTiers: [5, 6] }),
+    true,
+  );
+  assert.equal(
+    matchesOperator({ ...operator, rarity: 3 }, { ...EMPTY_FILTERS, rarityTiers: [3] }),
+    true,
+  );
+  assert.equal(
+    matchesOperator({ ...operator, rarity: 4 }, { ...EMPTY_FILTERS, rarityTiers: [3] }),
     false,
   );
   assert.equal(

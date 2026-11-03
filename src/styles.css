@@ -368,6 +368,7 @@ small {
   min-height: 80px;
   border-bottom: 1px solid var(--line);
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   padding: 16px 36px;
@@ -389,6 +390,30 @@ small {
 .breadcrumb strong {
   font-weight: 500;
   color: #444b3c;
+}
+.rarity-segmented {
+  flex: none;
+}
+.rarity-segmented-multi {
+  --rarity-button-pad: 3px;
+  --rarity-pill-pad: 8px;
+}
+.rarity-segmented.rarity-segmented-multi button {
+  padding: 0 var(--rarity-button-pad);
+}
+.rarity-segmented-multi .rarity-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--rarity-pill-pad);
+  border-radius: 4px;
+  transition: background 0.16s;
+}
+.rarity-segmented-multi button.selected .rarity-pill {
+  background: #fff;
+  box-shadow: 0 1px 4px #26341d12;
 }
 .header-controls {
   display: flex;
@@ -2076,6 +2101,14 @@ small {
     font-size: var(--font-caption);
     padding: 0 9px;
   }
+  .topbar .rarity-segmented {
+    --rarity-button-pad: 2px;
+    --rarity-pill-pad: 5px;
+  }
+  .topbar .rarity-segmented button {
+    min-height: 36px;
+    font-size: 12px;
+  }
   .breadcrumb {
     font-size: var(--font-caption);
     gap: 10px;
@@ -2130,6 +2163,17 @@ small {
 @media (max-width: 1050px) {
   :root {
     --sidebar-width: 202px;
+  }
+  .header-controls {
+    margin-left: auto;
+  }
+  .topbar .rarity-segmented {
+    --rarity-button-pad: 2px;
+    --rarity-pill-pad: 4px;
+  }
+  .topbar .rarity-segmented button {
+    min-height: 34px;
+    font-size: 11px;
   }
   .sidebar {
     padding-left: 12px;
@@ -2304,9 +2348,18 @@ small {
   }
   .header-controls {
     gap: 11px;
+    margin-left: auto;
   }
   .breadcrumb {
     font-size: var(--font-caption);
+  }
+  .topbar .rarity-segmented {
+    --rarity-button-pad: 2px;
+    --rarity-pill-pad: 4px;
+  }
+  .topbar .rarity-segmented button {
+    min-height: 28px;
+    font-size: 11px;
   }
   .sidebar-bottom .sidebar-divider {
     margin-top: 19px;
@@ -3432,6 +3485,25 @@ small {
   .topbar .breadcrumb {
     max-width: calc(100% - 196px);
   }
+  .topbar .rarity-segmented {
+    padding: 3px;
+    --rarity-button-pad: 1px;
+    --rarity-pill-pad: 2px;
+  }
+  .topbar .mobile-menu-button {
+    width: 27px;
+    height: 30px;
+  }
+  .topbar .rarity-segmented button {
+    min-height: 26px;
+    font-size: 10px;
+  }
+}
+@media (max-width: 380px) {
+  .topbar .rarity-segmented {
+    --rarity-button-pad: 1px;
+    --rarity-pill-pad: 0;
+  }
 }
 
 /* B站只展示累计作品数量，采用单色总量条。 */
@@ -3572,5 +3644,25 @@ small {
   }
   .count-caption > span {
     max-width: 100%;
+  }
+}
+@media (max-width: 350px) {
+  .topbar .breadcrumb {
+    max-width: 100%;
+  }
+  .topbar.bili-count-topbar {
+    flex-wrap: wrap;
+    min-height: 128px;
+  }
+  .bili-count-topbar .header-controls {
+    width: 100%;
+    order: 1;
+  }
+  .quick-filter-controls {
+    position: static;
+  }
+  .header-controls {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 }

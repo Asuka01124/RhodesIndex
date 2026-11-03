@@ -8,7 +8,6 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
-  ChevronRight,
   Heart,
   Info,
   Menu,
@@ -28,6 +27,7 @@ import { CollaborationToggle } from './CollaborationToggle';
 import { collaborationRoster } from './collaborations';
 import { DouyinAmbiguityToggle } from './DouyinAmbiguityToggle';
 import { hideAmbiguousDouyinTopics } from './douyinAmbiguity';
+import { RaritySlider } from './RaritySlider';
 
 const dateLabel = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚未取得';
@@ -281,7 +281,7 @@ export function BilibiliCountsPage({
     setExported(true);
   };
   const reset = () => {
-    onFiltersChange({ ...EMPTY_FILTERS });
+    onFiltersChange({ ...EMPTY_FILTERS, rarityTiers: filters.rarityTiers });
     onQueryChange('');
     onClearFavorites();
   };
@@ -300,9 +300,10 @@ export function BilibiliCountsPage({
           >
             <Menu size={20} aria-hidden="true" />
           </button>
-          <span>创作观察</span>
-          <ChevronRight size={13} aria-hidden="true" />
-          <strong>{favoritesOnly ? `我的关注 · ${platformName}` : platformName}</strong>
+          <RaritySlider
+            value={filters.rarityTiers}
+            onChange={(rarityTiers) => onFiltersChange({ ...filters, rarityTiers })}
+          />
         </div>
         <div className="header-controls">
           <div className="quick-filter-controls">
@@ -410,10 +411,13 @@ export function BilibiliCountsPage({
           </div>
           <div className="chart-options count-options">
             <p className="count-coverage">
-              {loading && !data
-                ? '正在读取标签统计…'
-                : `已取得 ${data?.metadata.availableTags ?? 0} / ${data?.metadata.plannedTags ?? (isDouyin ? douyinRoster(operators).length : operators.length)} 位干员的${isLofter ? '标签统计' : isDouyin ? '话题统计' : '搜索统计'}`}
-              {isDouyin && <span className="summary-tag">同名话题 · 归属待核实</span>}
+              {isDouyin ? (
+                <span className="summary-tag">同名话题仍影响排名，请自行甄别</span>
+              ) : loading && !data ? (
+                '正在读取标签统计…'
+              ) : (
+                `已取得 ${data?.metadata.availableTags ?? 0} / ${data?.metadata.plannedTags ?? operators.length} 位干员的${isLofter ? '标签统计' : '搜索统计'}`
+              )}
             </p>
             <button
               className="sort-button"

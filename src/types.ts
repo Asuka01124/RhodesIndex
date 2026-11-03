@@ -112,11 +112,13 @@ export interface CollectorState {
   snapshot: { workCount: number; operatorCount: number; generatedAt: string | null };
 }
 
+export type RarityTier = 3 | 4 | 5 | 6;
+
 export interface Filters {
   professions: string[];
   factions: string[];
   gender: '全部' | Gender;
-  minRarity: number;
+  rarityTiers: RarityTier[];
 }
 
 export interface RankedOperator {

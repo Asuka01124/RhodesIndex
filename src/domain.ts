@@ -5,6 +5,7 @@ import type {
   Metric,
   Operator,
   RankedOperator,
+  RarityTier,
   Scope,
 } from './types.ts';
 
@@ -25,8 +26,13 @@ export const EMPTY_FILTERS: Filters = {
   professions: [],
   factions: [],
   gender: '全部',
-  minRarity: 1,
+  rarityTiers: [],
 };
+export const DEFAULT_FILTERS: Filters = { ...EMPTY_FILTERS, rarityTiers: [6] };
+
+export function matchesRarityTier(rarity: number, tier: RarityTier): boolean {
+  return tier === 3 ? rarity <= 3 : rarity === tier;
+}
 
 export function matchesOperator(operator: Operator, filters: Filters, query = ''): boolean {
   const normalized = query.normalize('NFKC').trim().toLocaleLowerCase();
@@ -46,7 +52,8 @@ export function matchesOperator(operator: Operator, filters: Filters, query = ''
     (!filters.professions.length || filters.professions.includes(operator.profession)) &&
     (!filters.factions.length || operator.factions.some((f) => filters.factions.includes(f))) &&
     (filters.gender === '全部' || operator.gender === filters.gender) &&
-    operator.rarity >= filters.minRarity
+    (!filters.rarityTiers.length ||
+      filters.rarityTiers.some((tier) => matchesRarityTier(operator.rarity, tier)))
   );
 }
 
@@ -102,12 +109,7 @@ export function compactNumber(value: number): string {
 }
 
 export function filterCount(filters: Filters): number {
-  return (
-    filters.professions.length +
-    filters.factions.length +
-    Number(filters.gender !== '全部') +
-    Number(filters.minRarity > 1)
-  );
+  return filters.professions.length + filters.factions.length + Number(filters.gender !== '全部');
 }
 
 export function validateDataset(input: unknown, operators: Operator[]): HeatDataset {

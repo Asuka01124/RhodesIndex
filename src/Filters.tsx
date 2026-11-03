@@ -156,25 +156,6 @@ export function FilterPanel({
             onChange={(gender) => setDraft({ ...draft, gender })}
           />
         </fieldset>
-        <fieldset>
-          <legend>
-            最低星级 <strong>{draft.minRarity} 星</strong>
-          </legend>
-          <input
-            className="range"
-            aria-label="最低星级"
-            type="range"
-            min={1}
-            max={6}
-            step={1}
-            value={draft.minRarity}
-            onChange={(e) => setDraft({ ...draft, minRarity: Number(e.target.value) })}
-          />
-          <div className="range-labels">
-            <span>1 星 · 不限</span>
-            <span>6 星</span>
-          </div>
-        </fieldset>
         {showYears && (
           <fieldset>
             <legend>
@@ -218,7 +199,7 @@ export function FilterPanel({
         <button
           className="text-button"
           onClick={() => {
-            setDraft({ ...EMPTY_FILTERS });
+            setDraft((previous) => ({ ...EMPTY_FILTERS, rarityTiers: previous.rarityTiers }));
             setFirst(2019);
             setLast(2026);
             setFactionSearch('');

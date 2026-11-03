@@ -10,7 +10,6 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
-  ChevronRight,
   CircleHelp,
   Database,
   Grid2X2,
@@ -42,6 +41,7 @@ import type {
 import {
   compactNumber,
   csvEscape,
+  DEFAULT_FILTERS,
   EMPTY_FILTERS,
   filterCount,
   PLATFORM_IDS,
@@ -58,6 +58,7 @@ import { SidebarHighlight } from './SidebarHighlight';
 import { BilibiliCountsPage, BilibiliCountInfo } from './BilibiliCountsPage';
 import { CollaborationToggle } from './CollaborationToggle';
 import { collaborationRoster } from './collaborations';
+import { RaritySlider } from './RaritySlider';
 
 const initialParams = new URLSearchParams(window.location.search);
 const supportedScopes: readonly string[] = ['all', ...PLATFORM_IDS];
@@ -105,7 +106,7 @@ export default function App() {
     ].sort();
     return initialParams.has('years') ? parsed : YEARS;
   });
-  const [filters, setFilters] = useState<Filters>({ ...EMPTY_FILTERS });
+  const [filters, setFilters] = useState<Filters>({ ...DEFAULT_FILTERS });
   const [includeCollaborations, setIncludeCollaborations] = useState(true);
   const [sort, setSort] = useState<'asc' | 'desc'>('desc');
   const [showAll, setShowAll] = useState(false);
@@ -379,7 +380,7 @@ export default function App() {
     });
   }
   function resetAll() {
-    setFilters({ ...EMPTY_FILTERS });
+    setFilters((previous) => ({ ...EMPTY_FILTERS, rarityTiers: previous.rarityTiers }));
     setYears(YEARS);
     setQuery('');
     setFavoritesOnly(false);
@@ -605,9 +606,12 @@ export default function App() {
                 >
                   <Menu size={20} aria-hidden="true" />
                 </button>
-                <span>创作观察</span>
-                <ChevronRight size={13} aria-hidden="true" />
-                <strong>{favoritesOnly ? '我的关注' : platformName}</strong>
+                <RaritySlider
+                  value={filters.rarityTiers}
+                  onChange={(rarityTiers) =>
+                    setFilters((previous) => ({ ...previous, rarityTiers }))
+                  }
+                />
               </div>
               <div className="header-controls">
                 <Segmented
@@ -809,12 +813,6 @@ export default function App() {
                     {filters.gender !== '全部' && (
                       <button onClick={() => setFilters({ ...filters, gender: '全部' })}>
                         {filters.gender === '其他' ? '其他／未知' : filters.gender}
-                        <X size={11} aria-hidden="true" />
-                      </button>
-                    )}
-                    {filters.minRarity > 1 && (
-                      <button onClick={() => setFilters({ ...filters, minRarity: 1 })}>
-                        {filters.minRarity} 星及以上
                         <X size={11} aria-hidden="true" />
                       </button>
                     )}
