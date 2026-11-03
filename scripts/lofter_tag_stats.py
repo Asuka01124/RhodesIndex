@@ -21,7 +21,7 @@ from tag_store import atomic_json
 RUNTIME = LOCAL / "lofter"
 
 
-def make_plan(operators, roster=None, primary_only=False):
+def make_plan(operators, roster=None, primary_only=True):
     matcher = Matcher(roster if roster is not None else operators)
     plan = {}
     for operator in operators:
@@ -37,24 +37,27 @@ def make_plan(operators, roster=None, primary_only=False):
 
 
 class TagStatsStore:
-    def __init__(self, directory=LOCAL):
+    def __init__(self, directory=LOCAL, platform="lofter"):
+        if platform not in ("lofter", "bilibili", "douyin"):
+            raise ValueError("标签统计平台无效。")
+        self.platform = platform
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
         self.db = sqlite3.connect(self.directory / "http-collection.sqlite", check_same_thread=False, timeout=10)
-        self.db.executescript("""
+        self.db.executescript(f"""
             PRAGMA journal_mode=WAL;
-            CREATE TABLE IF NOT EXISTS lofter_tag_stats(tag_key TEXT PRIMARY KEY,data TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS lofter_tag_history(run_id TEXT,tag_key TEXT,data TEXT NOT NULL,
+            CREATE TABLE IF NOT EXISTS {self.platform}_tag_stats(tag_key TEXT PRIMARY KEY,data TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS {self.platform}_tag_history(run_id TEXT,tag_key TEXT,data TEXT NOT NULL,
                 PRIMARY KEY(run_id,tag_key));
-            CREATE TABLE IF NOT EXISTS lofter_tag_queue(run_id TEXT,tag_key TEXT,state TEXT,note TEXT,
+            CREATE TABLE IF NOT EXISTS {self.platform}_tag_queue(run_id TEXT,tag_key TEXT,state TEXT,note TEXT,
                 PRIMARY KEY(run_id,tag_key));
         """)
 
     def done(self, run_id):
         with self.lock:
             return {r[0] for r in self.db.execute(
-                "SELECT tag_key FROM lofter_tag_queue WHERE run_id=? AND state IN ('completed','unavailable')", (run_id,)
+                f"SELECT tag_key FROM {self.platform}_tag_queue WHERE run_id=? AND state IN ('completed','unavailable')", (run_id,)
             )}
 
     def put(self, run_id, item, observation):
@@ -62,10 +65,10 @@ class TagStatsStore:
         encoded = json.dumps(record, ensure_ascii=False)
         with self.lock:
             try:
-                self.db.execute("INSERT OR REPLACE INTO lofter_tag_stats VALUES(?,?)", (item["key"], encoded))
-                self.db.execute("INSERT OR REPLACE INTO lofter_tag_history VALUES(?,?,?)", (run_id, item["key"], encoded))
-                self.db.execute("INSERT OR REPLACE INTO lofter_tag_queue VALUES(?,?,?,?)", (
-                    run_id, item["key"], "unavailable" if record.get("status") == "unavailable" else "completed",
+                self.db.execute(f"INSERT OR REPLACE INTO {self.platform}_tag_stats VALUES(?,?)", (item["key"], encoded))
+                self.db.execute(f"INSERT OR REPLACE INTO {self.platform}_tag_history VALUES(?,?,?)", (run_id, item["key"], encoded))
+                self.db.execute(f"INSERT OR REPLACE INTO {self.platform}_tag_queue VALUES(?,?,?,?)", (
+                    run_id, item["key"], self.completed_state(record),
                     record.get("missingReason", ""),
                 ))
                 self.db.commit()
@@ -74,16 +77,19 @@ class TagStatsStore:
                 raise
         return record
 
+    def completed_state(self, record):
+        return "unavailable" if record.get("status") == "unavailable" else "completed"
+
     def fail(self, run_id, key, state, note):
         with self.lock:
-            self.db.execute("INSERT OR REPLACE INTO lofter_tag_queue VALUES(?,?,?,?)", (run_id, key, state, note))
+            self.db.execute(f"INSERT OR REPLACE INTO {self.platform}_tag_queue VALUES(?,?,?,?)", (run_id, key, state, note))
             self.db.commit()
 
     def coverage(self, run_id, plan):
         done = self.done(run_id)
         with self.lock:
             successful = {r[0] for r in self.db.execute(
-                "SELECT tag_key FROM lofter_tag_queue WHERE run_id=? AND state='completed'", (run_id,)
+                f"SELECT tag_key FROM {self.platform}_tag_queue WHERE run_id=? AND state='completed'", (run_id,)
             )}
         groups = {}
         for item in plan:
@@ -97,10 +103,13 @@ class TagStatsStore:
 
 
 class TagStatsCollector:
+    kind = "tag_summary"
+    label = "LOFTER"
+
     def __init__(self, operators, roster=None, workers=3, interval=3.5, resume=True,
-                 primary_only=False, store=None, source=None, runtime=RUNTIME):
+                 primary_only=True, store=None, source=None, runtime=RUNTIME, plan=None):
         self.operators = operators
-        self.plan = make_plan(operators, roster, primary_only)
+        self.plan = make_plan(operators, roster, primary_only) if plan is None else plan
         self.store = store if store is not None else TagStatsStore()
         self.source = source if source is not None else LofterTags(interval)
         self.runtime = Path(runtime)
@@ -114,10 +123,10 @@ class TagStatsCollector:
             old = json.loads((self.runtime / "http-job.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             old = {}
-        continuation = (resume and old.get("kind") == "tag_summary"
+        continuation = (resume and old.get("kind") == self.kind
                         and old.get("planHash") == digest and old.get("state") in ("running", "cancelled", "failed"))
         run_id = old["id"] if continuation else str(uuid.uuid4())
-        self.job = {"id": run_id, "kind": "tag_summary", "state": "running", "planHash": digest,
+        self.job = {"id": run_id, "kind": self.kind, "state": "running", "planHash": digest,
                     "scope": "primary" if primary_only else "all_aliases", "workers": workers, "interval": interval,
                     "startedAt": old["startedAt"] if continuation else now(), "finishedAt": None,
                     "totalOperators": len(operators), "totalTags": len(self.plan), "current": "",
@@ -171,6 +180,12 @@ class TagStatsCollector:
             self.job.update(self.store.coverage(self.job["id"], self.plan))
             self.job["requests"] = self.source.requests
             atomic_json(self.runtime / "http-job.json", self.job)
+        if self.store.platform == "lofter" and self.store.directory == LOCAL and self.runtime == RUNTIME:
+            signature = (self.job["state"], self.job["requests"], self.job["processedTags"])
+            if signature != getattr(self, "_exported_signature", None):
+                from lofter_tag_export import export_counts
+                export_counts()
+                self._exported_signature = signature
 
     def run(self):
         self.runtime.mkdir(parents=True, exist_ok=True)
@@ -189,6 +204,6 @@ class TagStatsCollector:
         )
         self.job["finishedAt"] = now()
         self.publish()
-        print(f"LOFTER 已处理 {self.job['processedTags']}/{self.job['totalTags']} 个标签；"
+        print(f"{self.label} 已处理 {self.job['processedTags']}/{self.job['totalTags']} 个标签；"
               f"可读统计 {self.job['completedTags']} 个，缺失 {self.job['unavailableTags']} 个。", flush=True)
         return self.job["state"]

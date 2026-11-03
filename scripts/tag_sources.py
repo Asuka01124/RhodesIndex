@@ -11,4 +11,4 @@ from collector_sources.tumblr import Tumblr
 from collector_sources.youtube import embedded_json, walk
 from collector_sources.lofter import Lofter  # 使用 lofter_collect.py 的独立增量调度器。
 
-SOURCES = {cls.platform: cls for cls in [Pixiv, Bilibili, Xiaohongshu, Youtube, Bluesky, Tumblr]}
+SOURCES = {cls.platform: cls for cls in [Pixiv, Xiaohongshu, Youtube, Bluesky, Tumblr]}

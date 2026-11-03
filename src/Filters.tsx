@@ -4,6 +4,7 @@ import type { Filters, Operator } from './types';
 import { EMPTY_FILTERS, matchesOperator, YEARS } from './domain';
 import { PROFESSIONS } from './data';
 import { Segmented } from './ui';
+import { collaborationRoster } from './collaborations';
 
 export function FilterPanel({
   filters,
@@ -11,12 +12,16 @@ export function FilterPanel({
   operators,
   onApply,
   onClose,
+  showYears = true,
+  includeCollaborations = true,
 }: {
   filters: Filters;
   years: number[];
   operators: Operator[];
   onApply: (filters: Filters, years: number[]) => void;
   onClose: () => void;
+  showYears?: boolean;
+  includeCollaborations?: boolean;
 }) {
   const [draft, setDraft] = useState<Filters>({ ...filters });
   const [first, setFirst] = useState(years.length ? Math.min(...years) : 2019);
@@ -30,7 +35,9 @@ export function FilterPanel({
       ),
     [operators],
   );
-  const count = operators.filter((operator) => matchesOperator(operator, draft)).length;
+  const count = collaborationRoster(operators, includeCollaborations).filter((operator) =>
+    matchesOperator(operator, draft),
+  ).length;
   const toggle = (key: 'professions' | 'factions', value: string) =>
     setDraft((previous) => ({
       ...previous,
@@ -43,7 +50,7 @@ export function FilterPanel({
     const handlePointer = (event: PointerEvent) => {
       if (
         !ref.current?.contains(event.target as Node) &&
-        !(event.target as HTMLElement).closest('[data-filter-trigger]')
+        !(event.target as HTMLElement).closest('[data-filter-trigger], [data-collaboration-toggle]')
       )
         onClose();
     };
@@ -168,42 +175,44 @@ export function FilterPanel({
             <span>6 星</span>
           </div>
         </fieldset>
-        <fieldset>
-          <legend>
-            统计年份{' '}
-            <strong>
-              {first} — {last}
-            </strong>
-          </legend>
-          <div className="year-ranges">
-            <label>
-              起始
-              <input
-                aria-label="起始年份"
-                className="range"
-                type="range"
-                min={2019}
-                max={2026}
-                value={first}
-                onChange={(e) => setFirst(Math.min(Number(e.target.value), last))}
-              />
-              <span>{first}</span>
-            </label>
-            <label>
-              结束
-              <input
-                aria-label="结束年份"
-                className="range"
-                type="range"
-                min={2019}
-                max={2026}
-                value={last}
-                onChange={(e) => setLast(Math.max(Number(e.target.value), first))}
-              />
-              <span>{last}</span>
-            </label>
-          </div>
-        </fieldset>
+        {showYears && (
+          <fieldset>
+            <legend>
+              统计年份{' '}
+              <strong>
+                {first} — {last}
+              </strong>
+            </legend>
+            <div className="year-ranges">
+              <label>
+                起始
+                <input
+                  aria-label="起始年份"
+                  className="range"
+                  type="range"
+                  min={2019}
+                  max={2026}
+                  value={first}
+                  onChange={(e) => setFirst(Math.min(Number(e.target.value), last))}
+                />
+                <span>{first}</span>
+              </label>
+              <label>
+                结束
+                <input
+                  aria-label="结束年份"
+                  className="range"
+                  type="range"
+                  min={2019}
+                  max={2026}
+                  value={last}
+                  onChange={(e) => setLast(Math.max(Number(e.target.value), first))}
+                />
+                <span>{last}</span>
+              </label>
+            </div>
+          </fieldset>
+        )}
       </div>
       <div className="filter-footer">
         <button

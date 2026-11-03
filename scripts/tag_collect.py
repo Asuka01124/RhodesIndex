@@ -37,6 +37,7 @@ class Collector:
     def __init__(
         self, platforms, operators, resume=False, interval=0.7, workers=8, stage="all",
         delay_range=None,
+        runtime=None, primary_only=False, halt_on_blocked=False,
     ):
         self.platforms = platforms
         self.operators = operators
@@ -46,6 +47,9 @@ class Collector:
         self.workers = max(1, int(workers))
         self.stage = stage
         self.delay_range = tuple(delay_range) if delay_range else None
+        self.runtime = Path(runtime) if runtime is not None else LOCAL
+        self.primary_only = primary_only
+        self.halt_on_blocked = halt_on_blocked
         self.store = Store()
         self.stopped = threading.Event()
         self.lock = threading.RLock()
@@ -70,6 +74,7 @@ class Collector:
                 "workers": self.workers,
                 "interval": None if self.delay_range else interval,
                 "delayRange": self.delay_range,
+                "tagScope": "chinese_primary" if primary_only else "all_aliases",
             },
         )
 
@@ -77,7 +82,7 @@ class Collector:
         if self.stopped.is_set():
             return True
         try:
-            if json.loads((LOCAL / "http-control.json").read_text()).get("stop"):
+            if json.loads((getattr(self, "runtime", LOCAL) / "http-control.json").read_text()).get("stop"):
                 self.stopped.set()
         except (OSError, ValueError):
             pass
@@ -129,7 +134,8 @@ class Collector:
         return [
             self.new_unit(source.platform, operator, tag, kind)
             for operator in self.operators
-            for tag in self.matcher.aliases(operator, source.platform)
+            for tag in ([operator["name"]] if getattr(self, "primary_only", False)
+                        else self.matcher.aliases(operator, source.platform))
             for kind in source.kinds
         ]
 
@@ -164,6 +170,8 @@ class Collector:
             f'{unit["platform"]} · {unit["operator"]["name"]} · '
             f'#{unit["tag"]} · {unit["kind"]}：{error}'
         )
+        if error.kind == "blocked" and getattr(self, "halt_on_blocked", False):
+            self.stopped.set()
 
     def observe(self, source, unit, item):
         """把一行检索结果归属并落库；返回 True 表示遇到封锁，需要停掉本单元。"""
@@ -530,7 +538,7 @@ class Collector:
             last = time.monotonic()
             while not all(f.done() for f in futures):
                 with self.lock:
-                    atomic_json(LOCAL / "http-job.json", self.job)
+                    atomic_json(self.runtime / "http-job.json", self.job)
                 if time.monotonic() - last > 30:
                     # 进度只读一个 COUNT；作品明细留在 SQLite，不反复导出大 JSON。
                     print(
@@ -543,8 +551,8 @@ class Collector:
                 time.sleep(2)
 
     def run(self):
-        atomic_json(LOCAL / "http-control.json", {"stop": False})
-        atomic_json(LOCAL / "http-job.json", self.job)
+        atomic_json(self.runtime / "http-control.json", {"stop": False})
+        atomic_json(self.runtime / "http-job.json", self.job)
         signal.signal(signal.SIGINT, lambda *_: self.stopped.set())
         if self.stage in ("all", "tags"):
             self.supervise(self.crawl_platform)
@@ -573,11 +581,12 @@ class Collector:
             )
             + "其余范围与受限情况见覆盖记录。"
         )
-        atomic_json(LOCAL / "http-job.json", self.job)
+        atomic_json(self.runtime / "http-job.json", self.job)
         print(self.job["message"], flush=True)
 
 
-def main(argv=None):
+def main(argv=None, *, runtime=None, primary_only=False, halt_on_blocked=False):
+    runtime = Path(runtime) if runtime is not None else LOCAL
     parser = argparse.ArgumentParser(
         description="纯 HTTP Session 角色标签全量采集，不启动浏览器、不设作品数量上限。"
     )
@@ -609,11 +618,11 @@ def main(argv=None):
         store_session(args.platform)
         return
     if args.command == "status":
-        p = LOCAL / "http-job.json"
+        p = runtime / "http-job.json"
         print(p.read_text(encoding="utf-8") if p.exists() else "尚无纯 HTTP 采集任务。")
         return
     if args.command == "stop":
-        atomic_json(LOCAL / "http-control.json", {"stop": True})
+        atomic_json(runtime / "http-control.json", {"stop": True})
         print("已请求停止，当前 HTTP 请求返回后保存退出。")
         return
     if args.command == "export":
@@ -639,8 +648,9 @@ def main(argv=None):
             for value in selected
         ):
             parser.error("存在未收录的干员名称或 ID。")
-    if args.interval < 0.2:
-        parser.error("请求间隔至少 0.2 秒。")
+    minimum_interval = 0.2
+    if not math.isfinite(args.interval) or args.interval < minimum_interval:
+        parser.error(f"请求间隔需为有限数值，且至少 {minimum_interval:g} 秒。")
     if args.delay_range is not None:
         minimum, maximum = args.delay_range
         if platforms != ["pixiv"]:
@@ -649,8 +659,8 @@ def main(argv=None):
             parser.error("随机休眠需满足 0.2 <= 最小秒数 <= 最大秒数，且均为有限数值。")
     if not 1 <= args.workers <= 32:
         parser.error("线程数需在 1 到 32 之间。")
-    LOCAL.mkdir(parents=True, exist_ok=True)
-    with (LOCAL / "http-run.lock").open("a+b") as lock:
+    runtime.mkdir(parents=True, exist_ok=True)
+    with (runtime / "http-run.lock").open("a+b") as lock:
         import msvcrt
 
         lock.seek(0)
@@ -664,6 +674,7 @@ def main(argv=None):
         Collector(
             platforms, operators, args.resume, args.interval, args.workers, args.stage,
             args.delay_range,
+            runtime=runtime, primary_only=primary_only, halt_on_blocked=halt_on_blocked,
         ).run()
 
 

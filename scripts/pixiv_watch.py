@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections import deque
+from contextlib import closing
 from datetime import datetime
 import json
 import os
@@ -16,26 +17,27 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def snapshot(directory):
+def snapshot(directory, platform="pixiv"):
     # 不导入采集器，避免初始化 Cookie、运行锁或数据库迁移。
     uri = (directory / "http-collection.sqlite").resolve().as_uri() + "?mode=ro"
-    with sqlite3.connect(uri, uri=True, timeout=1) as db:
+    with closing(sqlite3.connect(uri, uri=True, timeout=1)) as db:
         db.execute("PRAGMA query_only=ON")
         db.execute("BEGIN")
         works = db.execute(
-            "SELECT COUNT(*) FROM works WHERE key GLOB 'pixiv:*'"
+            "SELECT COUNT(*) FROM works WHERE key GLOB ?", (platform + ":*",)
         ).fetchone()[0]
         pending = db.execute(
-            "SELECT COUNT(*) FROM metrics WHERE platform='pixiv'"
+            "SELECT COUNT(*) FROM metrics WHERE platform=?", (platform,)
         ).fetchone()[0]
         states = {
             state: (count, pages or 0)
             for state, count, pages in db.execute(
                 "SELECT state,COUNT(*),SUM(pages) FROM queries "
-                "WHERE platform='pixiv' GROUP BY state"
+                "WHERE platform=? GROUP BY state", (platform,)
             )
         }
-    job_path = directory / "http-job.json"
+    runtime = directory / "bilibili" if platform == "bilibili" else directory
+    job_path = runtime / "http-job.json"
     try:
         job = json.loads(job_path.read_text(encoding="utf-8"))
         heartbeat = max(0, time.time() - job_path.stat().st_mtime)
@@ -56,7 +58,8 @@ def rate(history, seconds):
     return (latest[1] - base[1]) / elapsed if elapsed > 0 else 0, elapsed
 
 
-def render(history, details, last_change, initial, interval, trend):
+def render(history, details, last_change, initial, interval, trend, platform="pixiv"):
+    label = "哔哩哔哩" if platform == "bilibili" else "Pixiv"
     works, pending, states, job, heartbeat = details
     elapsed = history[-1][0] - history[-2][0] if len(history) > 1 else 0
     speed = (works - history[-2][1]) / elapsed if elapsed > 0 else 0
@@ -79,17 +82,18 @@ def render(history, details, last_change, initial, interval, trend):
     maximum = max(trend, default=0)
     chart = "".join(levels[min(7, int(s / maximum * 7))] if maximum else "▁" for s in trend)
     lines = [
-        "PIXIV 采集速度监视器",
+        f"{label} 采集速度监视器",
         "=" * 66,
         f"更新时间  {datetime.now():%Y-%m-%d %H:%M:%S}    每 {interval:g} 秒刷新",
         f"任务状态  {status}",
+        *([f"检索范围  {job.get('total', 0)} 位干员的中文主标签"] if platform == "bilibili" else []),
         "",
         f"当前速度     {speed:9.2f} 件/秒     {speed * 60:9.0f} 件/分钟",
         f"近 1 分钟    {minute:9.2f} 件/秒     {minute * 60:9.0f} 件/分钟",
         f"近 5 分钟    {five:9.2f} 件/秒     {five * 3600:9.0f} 件/小时",
         f"观察期均速   {average:9.2f} 件/秒     已观察 {age / 60:.1f} 分钟",
         "",
-        f"累计 Pixiv 作品     {works:,} 件（平台作品 ID 去重）",
+        f"累计 {label} 作品     {works:,} 件（平台作品 ID 去重）",
         f"本次监视期间新增    {works - initial:+,} 件",
         f"本轮新增            {delta:+,} 件 / {elapsed:.1f} 秒",
         f"距离上次新增        {stale:.0f} 秒",
@@ -112,7 +116,7 @@ def render(history, details, last_change, initial, interval, trend):
     return lines
 
 
-def main():
+def main(platform="pixiv"):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", type=Path, default=ROOT / ".local")
     parser.add_argument("--interval", type=float, default=5)
@@ -138,7 +142,7 @@ def main():
         while True:
             started = time.monotonic()
             try:
-                details = snapshot(args.directory)
+                details = snapshot(args.directory, platform)
                 works = details[0]
                 if initial is None:
                     initial, last_change = works, started
@@ -151,9 +155,9 @@ def main():
                 history.append((started, works))
                 trend.append(rate(history, args.interval)[0])
                 # 观察期均速保留完整样本，每 5 秒一条，持续一天约 1.7 万条。
-                lines = render(history, details, last_change, initial, args.interval, trend)
+                lines = render(history, details, last_change, initial, args.interval, trend, platform)
             except (sqlite3.Error, OSError) as error:
-                lines = ["Pixiv 速度监视器：暂时无法读取数据库，将自动重试。", str(error)]
+                lines = [f"{platform} 速度监视器：暂时无法读取数据库，将自动重试。", str(error)]
             if interactive:
                 print("\x1b[H" + "\n".join(line + "\x1b[K" for line in lines) + "\x1b[J", end="", flush=True)
             else:

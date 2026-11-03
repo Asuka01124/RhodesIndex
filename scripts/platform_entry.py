@@ -5,13 +5,16 @@ from __future__ import annotations
 import sys
 
 from tag_collect import main
-from tag_session import CollectError
+from tag_session import CollectError, LOCAL
 
 
 def run(platform, argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
         args = ["--help"]
+    if platform == "bilibili":
+        from bilibili_collect import main as count_main
+        return count_main(args)
     if args[0] == "collect":
         # 默认接续；不允许用独立入口悄悄切到另一个平台。
         if any(a == "--platforms" or a.startswith("--platforms=") for a in args):

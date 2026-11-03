@@ -57,7 +57,12 @@ export function Segmented<T extends string>({
       className={`segmented ${className}`}
       role="radiogroup"
       aria-label={label}
-      style={{ '--segments': options.length, '--selected': index } as CSSProperties}
+      style={
+        {
+          '--segments': options.length,
+          '--selected': index,
+        } as CSSProperties
+      }
     >
       <span className="segment-thumb" aria-hidden="true" />
       {options.map((option, i) => (

@@ -18,8 +18,10 @@ from pixiv_watch import rate
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def snapshot(directory):
-    job_path = directory / "lofter/http-job.json"
+def snapshot(directory, platform="lofter"):
+    if platform not in ("lofter", "bilibili"):
+        raise ValueError("监测平台无效。")
+    job_path = directory / platform / "http-job.json"
     try:
         job = json.loads(job_path.read_text(encoding="utf-8"))
         heartbeat = max(0, time.time() - job_path.stat().st_mtime)
@@ -30,14 +32,15 @@ def snapshot(directory):
         db.execute("PRAGMA query_only=ON")
         db.execute("BEGIN")
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        count = db.execute("SELECT COUNT(*) FROM lofter_tag_stats").fetchone()[0] if "lofter_tag_stats" in tables else 0
-        states = dict(db.execute("SELECT state,COUNT(*) FROM lofter_tag_queue WHERE run_id=? GROUP BY state", (job.get("id"),)).fetchall()) if "lofter_tag_queue" in tables else {}
+        count = db.execute(f"SELECT COUNT(*) FROM {platform}_tag_stats").fetchone()[0] if f"{platform}_tag_stats" in tables else 0
+        states = dict(db.execute(f"SELECT state,COUNT(*) FROM {platform}_tag_queue WHERE run_id=? GROUP BY state", (job.get("id"),)).fetchall()) if f"{platform}_tag_queue" in tables else {}
     job = {**job, "savedTagRecords": count}
     processed = states.get("completed", 0) + states.get("unavailable", 0)
     return processed, states, job, heartbeat
 
 
-def render(history, calls, details, last_change, initial, interval, trend):
+def render(history, calls, details, last_change, initial, interval, trend, platform="lofter"):
+    label = "哔哩哔哩" if platform == "bilibili" else "LOFTER"
     processed, states, job, heartbeat = details
     delta = processed - history[-2][1] if len(history) > 1 else 0
     seconds = history[-1][0] - history[-2][0] if len(history) > 1 else 0
@@ -61,12 +64,13 @@ def render(history, calls, details, last_change, initial, interval, trend):
     current_speed = f"{speed:8.2f} 标签/秒    {speed * 60:8.1f} 标签/分钟" if seconds else "采样中，下次刷新开始计算"
     error = str((job.get("errors") or ["暂无"])[-1]).replace("\n", " ")[:85]
     latest = job.get("lastObservation") or {}
+    search_counts = platform == "bilibili" and job.get("kind") == "search_result_count"
     views = latest.get("views") or {}
     participation = latest.get("participation") or {}
     total = job.get("totalTags", 0)
     eta = f"{max(0,total-processed) / minute / 60:.1f} 分钟（不含失败重试）" if minute > 0 and state == "running" else "等待足够的速度样本"
     return [
-        "LOFTER 标签统计监视器",
+        f"{label} 标签统计监视器",
         "=" * 66,
         f"更新时间  {datetime.now():%Y-%m-%d %H:%M:%S}    每 {interval:g} 秒刷新",
         f"任务状态  {status}", "",
@@ -75,23 +79,27 @@ def render(history, calls, details, last_change, initial, interval, trend):
         f"近 5 分钟   {five:8.2f} 标签/秒    {five * 3600:8.0f} 标签/小时",
         f"观察期均速  {average:8.2f} 标签/秒    已观察 {age / 60:.1f} 分钟", "",
         f"本轮已处理标签  {processed:,} / {total:,}",
-        f"可读统计 {states.get('completed',0):,}  无法取得 {states.get('unavailable',0):,}  失败 {states.get('failed',0):,}",
+        f"可读统计 {states.get('completed',0):,}  无法取得 {states.get('unavailable',0):,}  失败 {states.get('failed',0):,}  受限 {states.get('blocked',0):,}",
         f"已有可读统计的干员  {job.get('operatorsWithData',0):,} / {job.get('totalOperators',0):,}",
         f"接口调用 {job.get('requests',0):,} 次    近分钟 {request_rate*60:.1f} 次/分",
         f"粗估剩余  {eta}",
         f"当前处理  {str(job.get('current') or '等待任务更新')[:70]}", "",
         f"最近标签  {latest.get('tag') or '等待首条结果'}",
-        f"浏览  {views.get('display') or '未取得'}    参与  {participation.get('display') or '未取得'}",
+        (f"组合搜索结果  {latest.get('workCount') if latest.get('workCount') is not None else '未取得'}    已汇总 {latest.get('countedWindows',0)} 个时间范围"
+         if search_counts else f"已核验交集作品  {latest.get('workCount') if latest.get('workCount') is not None else '未取得'}    已检查 {latest.get('scannedRows',0)} / 排除 {latest.get('rejectedRows',0)}"
+         if platform == "bilibili" else f"浏览  {views.get('display') or '未取得'}    参与  {participation.get('display') or '未取得'}"),
         f"近期速度  {chart}",
         f"最后错误  {error}", "",
         f"均速窗口：1 分钟已观测 {min(60,minute_age):.0f} 秒；5 分钟已观测 {min(300,five_age):.0f} 秒。",
-        "仅采集标签头部；万／亿保留原文并标近似，不冒充精确计数。",
+        ("角色＋明日方舟＋联动作组合搜索；读取总数，1000触顶时分段汇总，不逐条核验标签。"
+         if search_counts else "B站要求角色＋明日方舟＋联动作品标签；按时间窗口翻页核验，不以搜索总数代替交集。"
+         if platform == "bilibili" else "仅采集标签头部；万／亿保留原文并标近似，不冒充精确计数。"),
         "不同标签不相加；无法取得的统计保留为空，不当作 0。",
-        "Ctrl+C 或关窗口仅退出监视器，LOFTER 与 Pixiv 继续采集。",
+        "Ctrl+C 或关窗口仅退出监视器，不停止采集。",
     ]
 
 
-def main():
+def main(platform="lofter"):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", type=Path, default=ROOT / ".local")
     parser.add_argument("--interval", type=float, default=5)
@@ -116,7 +124,7 @@ def main():
         while True:
             started = time.monotonic()
             try:
-                details = snapshot(args.directory)
+                details = snapshot(args.directory, platform)
                 processed, _, job, _ = details
                 if initial is None or job_id != job.get("id") or (history and processed < history[-1][1]):
                     history.clear(); calls.clear(); trend.clear()
@@ -128,9 +136,9 @@ def main():
                 if calls and count < calls[-1][1]: calls.clear()
                 calls.append((started, count))
                 trend.append(rate(history, args.interval)[0])
-                lines = render(history, calls, details, last_change, initial, args.interval, trend)
+                lines = render(history, calls, details, last_change, initial, args.interval, trend, platform)
             except (OSError, sqlite3.Error, ValueError) as error:
-                lines = ["LOFTER 标签监视器：暂时无法读取进度，将自动重试。", str(error)]
+                lines = [f"{platform} 标签监视器：暂时无法读取进度，将自动重试。", str(error)]
             if interactive:
                 print("\x1b[H" + "\n".join(line + "\x1b[K" for line in lines) + "\x1b[J", end="", flush=True)
             else:

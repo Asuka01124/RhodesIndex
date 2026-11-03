@@ -24,7 +24,7 @@ npm run dev
 ```powershell
 python -m pip install --target .local/python-libs -r scripts/requirements-collector.txt
 python scripts/tag_collect.py collect
-python scripts/tag_collect.py collect --platforms pixiv,bilibili,xiaohongshu --operators 蕾缪安
+python scripts/tag_collect.py collect --platforms pixiv,xiaohongshu --operators 蕾缪安
 python scripts/tag_collect.py collect --resume
 python scripts/tag_collect.py status
 python scripts/tag_collect.py stop
@@ -40,12 +40,12 @@ python scripts/tag_collect.py export
 ### 平台路径
 
 - Pixiv：精确 TAG 的插画／漫画／动图列表，以及小说列表；逐件读取 `likeCount`、`viewCount`、原始发布时间与标签，收藏另存。
-- 哔哩哔哩：分页检索候选视频，再读取原生 TAG 精确核对；使用 `stat.like`、`stat.view`。检索不是精确 TAG 列表，无法核验标签的候选不计入干员。
+- 哔哩哔哩：独立运行 `scripts/bilibili_collect.py`，要求作品原生标签同时包含角色中文名、明日方舟，联动角色再加作品名。默认单线程、3.5秒间隔，每页读取50条检索元数据；达到1000条上限时细分发布时间窗口，按BVID去重。只显示已核验数量及检索范围，不使用单标签 `count.use` 或模糊搜索总数；旧单标签数量已清除。
 - 小红书：已登录 HTTP 会话配合 [xhshow](https://github.com/Cloxl/xhshow) 的纯 Python 请求签名；搜索所有笔记类型，分页读取，逐件核验原生标签与精确点赞。未提供公开观看量时保留 null。
 - YouTube：HTTP 读取标签页的原始 JSON，再请求 continuation 分页；HTTP 作品详情中的原生标签、播放量与发布时间。无法核验精确点赞时为 null。
 - Bluesky：HTTP XRPC 标签分页、原生 facet 标签和 likeCount；访问受限时如实记录，不启动浏览器回退。
 - Tumblr：HTTP 读取公开标签流与下一页，使用原生 likeCount，不把 noteCount（喜欢、转发等总互动）当作点赞。
-- LOFTER：独立运行 `scripts/lofter_collect.py`，仅读取各角色标签页头部的浏览和参与，保留全部中日英及前缀别名。缩写保留原始显示并标注近似；不同标签不相加。不再采集作品明细，旧 LOFTER 作品数据与断点已清理；支持中断续读及后续标签快照刷新。
+- LOFTER：独立运行 `scripts/lofter_collect.py`，仅读取434位干员中文主标签页头部的浏览和参与，不再查询日文、英文或前缀别名。缩写保留原始显示并标注近似；不同标签不相加。不再采集作品明细，旧 LOFTER 作品数据与断点已清理；支持中断续读及后续标签快照刷新。
 - 微博、X、抖音仍待实现或验证对应的 HTTP 适配器；页面入口存在不代表数据已接通。
 
 `tag_aliases()` 维护角色的中／日／英文标签及明日方舟命名空间变体。它定义每个平台实际遍历的 TAG 范围，不保证涵盖作者使用的所有昵称、拼写或未知标签。共享外文名的阿米娅不同职业形态不会混算。
@@ -61,6 +61,17 @@ python scripts/tag_collect.py session --platform xiaohongshu
 ```
 
 会话使用 Windows DPAPI 加密保存到 `.local/http-sessions/`，不进入源码、普通配置、日志或前端。遇到验证码、401／403／429 等限制时，停止该平台并保存断点，不切换浏览器或伪造成功。网络使用明确代理环境变量或 Windows 当前系统代理。
+
+## 哔哩哔哩与 LOFTER 标签统计页面
+
+哔哩哔哩展示已核验的多标签交集作品数，采集中或截断显示“部分”。详情展示必需标签、已检查／排除记录、来源和时间；仅为搜索可返回范围，不声称全站总量。LOFTER 展示现有中文标签的参与与浏览，可切换指标；万、亿或加号保留平台原文并标为约数，参与不冒充去重作品总数。两个页面均支持搜索、职业／阵营等筛选、独立联动开关、排序、关注、详情与CSV导出，不套用年度点赞／观看量图表。
+
+```powershell
+python -X utf8 scripts/bilibili_collect.py export
+python -X utf8 scripts/lofter_collect.py export
+```
+
+采集器自动导出 `.local/<平台>/tag-counts.json` 和 `public/data/<平台>-tag-counts.json`，也可用上述命令单独整理已有记录。页面每5秒读取 `/api/<平台>/tag-counts`，静态回退为对应JSON，不再下载大型逐作品快照。数据文件仍仅保存在本地，不提交到GitHub。B站阿米娅各形态分别匹配中文标签，仅归一化全半角与大小写，不借用本体数量。
 
 ## 数据文件与统计口径
 

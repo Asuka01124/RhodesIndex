@@ -125,3 +125,109 @@ export interface RankedOperator {
   available: boolean;
   yearly: Record<number, number | null>;
 }
+
+export interface BilibiliTagCount {
+  operatorId: string;
+  tag: string;
+  nativeTag: string;
+  tagId: number | null;
+  workCount: number | null;
+  status: string;
+  observedAt: string | null;
+  url: string | null;
+  apiSourceUrl: string;
+  missingReason: string | null;
+  updateError?: string | null;
+  countBasis?: 'exact_tag_intersection' | 'search_result_total';
+  query?: string;
+  searchTerms?: string[];
+  lowerBound?: boolean;
+  countedWindows?: number;
+  pendingWindows?: number;
+  requiredTagGroups?: string[][];
+  complete?: boolean;
+  searchExhausted?: boolean;
+  coverageNote?: string;
+  scannedRows?: number;
+  rejectedRows?: number;
+}
+
+export interface BilibiliCountDataset {
+  schemaVersion: 1;
+  kind: 'tag_count';
+  platform: 'bilibili';
+  records: BilibiliTagCount[];
+  metadata: {
+    plannedTags: number;
+    availableTags: number;
+    missingTags: number;
+    coverage: 'configured_tags' | 'partial';
+    generatedAt: string | null;
+    timeBasis: 'all_time_at_observation';
+    methodology: string;
+    countBasis?: 'exact_tag_intersection' | 'search_result_total';
+  };
+}
+
+export interface NativeTagCount {
+  display: string;
+  exact: boolean;
+  value: number | null;
+  estimate: number | null;
+  atLeast: number | null;
+}
+
+export interface LofterTagRecord {
+  operatorId: string;
+  tag: string;
+  url: string | null;
+  views: NativeTagCount | null;
+  participation: NativeTagCount | null;
+  status: string;
+  observedAt: string | null;
+  missingReason: string | null;
+  updateError?: string | null;
+}
+
+export interface LofterTagDataset {
+  schemaVersion: 1;
+  kind: 'tag_summary';
+  platform: 'lofter';
+  records: LofterTagRecord[];
+  metadata: BilibiliCountDataset['metadata'];
+}
+
+export interface TagSummaryRow extends BilibiliTagCount {
+  displayValue?: string;
+  approximate?: boolean;
+  nativeViews?: NativeTagCount | null;
+  nativeParticipation?: NativeTagCount | null;
+  topicId?: string | null;
+  sharedOperatorIds?: string[];
+}
+
+export interface DouyinTopicRecord {
+  operatorId: string;
+  operatorIds: string[];
+  tag: string;
+  topicId: string | null;
+  playCount: number | null;
+  nativeViewCount: number | null;
+  status: string;
+  observedAt: string | null;
+  url: string;
+  apiSourceUrl: string;
+  missingReason: string | null;
+  association: 'exact_topic_name_only_operator_identity_unverified';
+}
+
+export interface DouyinTopicDataset {
+  schemaVersion: 1;
+  kind: 'topic_summary';
+  platform: 'douyin';
+  records: DouyinTopicRecord[];
+  metadata: BilibiliCountDataset['metadata'] & {
+    plannedOperators: number;
+    metric: 'native_view_count';
+  };
+}

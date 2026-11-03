@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CollectorState, LiveDataset, PlatformId } from './types';
 
 const EMPTY: LiveDataset = {
@@ -18,26 +18,40 @@ const EMPTY: LiveDataset = {
   },
 };
 
-export function useLiveData() {
+export function useLiveData(enabled = true) {
   const [live, setLive] = useState<LiveDataset>(EMPTY);
   const [state, setState] = useState<CollectorState | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const requestRef = useRef<AbortController | null>(null);
   const refresh = useCallback(async () => {
+    if (!enabled || requestRef.current) return;
+    const controller = new AbortController();
+    requestRef.current = controller;
     try {
-      const response = await fetch('/api/live-data', { cache: 'no-store' });
+      const response = await fetch('/api/live-data', {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
       if (!response.ok || !response.headers.get('content-type')?.includes('application/json'))
         throw new Error('本地采集服务未启动');
       const data = (await response.json()) as LiveDataset;
       if (data.metadata?.kind !== 'collected' || !Array.isArray(data.records))
         throw new Error('真实数据快照格式无效');
       setLive(data);
-      const status = await fetch('/api/collection/status', { cache: 'no-store' });
+      const status = await fetch('/api/collection/status', {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
       if (status.ok) setState((await status.json()) as CollectorState);
       setError('');
     } catch {
+      if (controller.signal.aborted) return;
       try {
-        const response = await fetch('/data/live-heat.json', { cache: 'no-store' });
+        const response = await fetch('/data/live-heat.json', {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
         if (!response.ok) throw new Error('missing');
         const data = (await response.json()) as LiveDataset;
         if (data.metadata?.kind !== 'collected') throw new Error('invalid');
@@ -48,16 +62,22 @@ export function useLiveData() {
       }
       setState(null);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
+      if (requestRef.current === controller) requestRef.current = null;
     }
-  }, []);
+  }, [enabled]);
   useEffect(() => {
+    if (!enabled) return;
     void refresh();
     const timer = setInterval(() => {
       void refresh();
     }, 4000);
-    return () => clearInterval(timer);
-  }, [refresh]);
+    return () => {
+      clearInterval(timer);
+      requestRef.current?.abort();
+      requestRef.current = null;
+    };
+  }, [refresh, enabled]);
   const command = useCallback(async (action: 'start' | 'stop' | 'login', body: unknown = {}) => {
     const response = await fetch(`/api/collection/${action}`, {
       method: 'POST',

@@ -7,3 +7,4 @@ package-lock.json
 .local/
 public/data/live-heat.json*
 .playwright-mcp/
+.playwright-cli/

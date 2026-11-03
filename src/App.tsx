@@ -55,6 +55,10 @@ import { BrandIcon, downloadFile, Modal, Segmented } from './ui';
 import { FilterPanel } from './Filters';
 import { DataPanel } from './DataPanel';
 import { useLiveData } from './useLiveData';
+import { SidebarHighlight } from './SidebarHighlight';
+import { BilibiliCountsPage, BilibiliCountInfo } from './BilibiliCountsPage';
+import { CollaborationToggle } from './CollaborationToggle';
+import { collaborationRoster } from './collaborations';
 
 const initialParams = new URLSearchParams(window.location.search);
 const supportedScopes: readonly string[] = ['all', ...PLATFORM_IDS];
@@ -102,6 +106,7 @@ export default function App() {
     return initialParams.has('years') ? parsed : YEARS;
   });
   const [filters, setFilters] = useState<Filters>({ ...EMPTY_FILTERS });
+  const [includeCollaborations, setIncludeCollaborations] = useState(true);
   const [sort, setSort] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -117,7 +122,7 @@ export default function App() {
   const [dataOpen, setDataOpen] = useState(false);
   const [imported, setImported] = useState<HeatDataset | null>(null);
   const [sourceMode, setSourceMode] = useState<DataMode>('collected');
-  const collection = useLiveData();
+  const collection = useLiveData(scope !== 'bilibili' && scope !== 'lofter' && scope !== 'douyin');
   const [detail, setDetail] = useState<Operator | null>(null);
   const [toast, setToast] = useState('');
   const [tooltip, setTooltip] = useState<{
@@ -176,10 +181,14 @@ export default function App() {
       : isDemo
         ? demoRecords
         : collection.live.records;
+  const visibleOperators = useMemo(
+    () => collaborationRoster(operators, includeCollaborations),
+    [operators, includeCollaborations],
+  );
   const ranked = useMemo(
     () =>
       rankOperators(
-        operators,
+        visibleOperators,
         records,
         scope,
         metric,
@@ -190,7 +199,7 @@ export default function App() {
         favoritesOnly ? favorites : undefined,
       ),
     [
-      operators,
+      visibleOperators,
       records,
       scope,
       metric,
@@ -223,14 +232,33 @@ export default function App() {
   useEffect(() => {
     setPage(1);
     setTooltip(null);
-  }, [scope, metric, years, filters, deferredQuery, favoritesOnly, sort, sourceMode, pageSize]);
+  }, [
+    scope,
+    metric,
+    years,
+    filters,
+    includeCollaborations,
+    deferredQuery,
+    favoritesOnly,
+    sort,
+    sourceMode,
+    pageSize,
+  ]);
   useEffect(() => {
     const params = new URLSearchParams();
     if (scope !== 'all') params.set('platform', scope);
-    if (metric !== 'likes') params.set('metric', metric);
-    if (view !== 'bars') params.set('view', view);
+    if (scope !== 'bilibili' && scope !== 'lofter' && scope !== 'douyin' && metric !== 'likes')
+      params.set('metric', metric);
+    if (scope !== 'bilibili' && scope !== 'lofter' && scope !== 'douyin' && view !== 'bars')
+      params.set('view', view);
     if (query) params.set('q', query);
-    if (years.length !== YEARS.length) params.set('years', years.join(','));
+    if (
+      scope !== 'bilibili' &&
+      scope !== 'lofter' &&
+      scope !== 'douyin' &&
+      years.length !== YEARS.length
+    )
+      params.set('years', years.join(','));
     window.history.replaceState(
       null,
       '',
@@ -245,6 +273,7 @@ export default function App() {
         !['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) &&
         !dataOpen &&
         !detail &&
+        !document.querySelector('dialog[open]') &&
         !filterOpen &&
         !event.ctrlKey &&
         !event.metaKey
@@ -312,6 +341,7 @@ export default function App() {
     setScope(value);
     setFavoritesOnly(false);
     setMobileMenu(false);
+    setFilterOpen(false);
   }
   function toggleFavorite(id: string) {
     const next = new Set(favorites);
@@ -438,6 +468,7 @@ export default function App() {
         aria-label="平台导航"
         inert={isMobile && !mobileMenu}
       >
+        <SidebarHighlight selection={favoritesOnly ? 'favorites' : scope} collapsed={collapsed} />
         <button
           className="brand"
           aria-label="罗德指数，返回全部平台"
@@ -541,518 +572,570 @@ export default function App() {
       </aside>
 
       <div className="workspace" inert={isMobile && mobileMenu}>
-        <header className="topbar">
-          <div className="breadcrumb">
-            <button
-              ref={mobileToggleRef}
-              className="icon-button mobile-menu-button"
-              aria-label="打开平台菜单"
-              aria-expanded={mobileMenu}
-              onClick={() => setMobileMenu(!mobileMenu)}
-            >
-              <Menu size={20} aria-hidden="true" />
-            </button>
-            <span>创作观察</span>
-            <ChevronRight size={13} aria-hidden="true" />
-            <strong>{favoritesOnly ? '我的关注' : platformName}</strong>
-          </div>
-          <div className="header-controls">
-            <Segmented
-              label="图表类型"
-              value={view}
-              onChange={(value) => {
-                setView(value);
-                setTooltip(null);
-              }}
-              options={[
-                {
-                  value: 'bars',
-                  label: '条形图',
-                  icon: <BarChart3 size={14} aria-hidden="true" />,
-                },
-                {
-                  value: 'heatmap',
-                  label: '热力图',
-                  icon: <Grid2X2 size={14} aria-hidden="true" />,
-                },
-              ]}
-            />
-            <span className="control-divider" />
-            <Segmented
-              label="热度指标"
-              value={metric}
-              onChange={setMetric}
-              options={[
-                { value: 'likes', label: '点赞', icon: <Heart size={14} aria-hidden="true" /> },
-                { value: 'views', label: '观看量', icon: <Play size={14} aria-hidden="true" /> },
-              ]}
-            />
-            <div className="filter-anchor">
-              <button
-                ref={filterRef}
-                data-filter-trigger
-                className={`outline-button filter-trigger ${activeFilters || filterOpen ? 'has-filter' : ''}`}
-                aria-expanded={filterOpen}
-                aria-controls="operator-filters"
-                onClick={() => setFilterOpen(!filterOpen)}
-              >
-                <SlidersHorizontal size={15} aria-hidden="true" />
-                <span>筛选</span>
-                {activeFilters ? (
-                  <span className="filter-count">{activeFilters}</span>
-                ) : (
-                  <ChevronDown size={13} aria-hidden="true" />
-                )}
-              </button>
-              {filterOpen && (
-                <FilterPanel
-                  filters={filters}
-                  years={years}
-                  operators={operators}
-                  onClose={closeFilters}
-                  onApply={(nextFilters, nextYears) => {
-                    setFilters(nextFilters);
-                    setYears(nextYears);
-                    closeFilters();
-                  }}
-                />
-              )}
-            </div>
-          </div>
-        </header>
-
-        <main id="main-content" className="main-content">
-          <section className="chart-section" aria-label="干员热度图表">
-            <div className="chart-toolbar">
-              <div className="chart-title">
-                <span className="chart-title-icon">
-                  {view === 'bars' ? (
-                    <BarChart3 size={17} strokeWidth={1.5} aria-hidden="true" />
-                  ) : (
-                    <Grid2X2 size={17} strokeWidth={1.5} aria-hidden="true" />
-                  )}
-                </span>
-                <h1>
-                  {view === 'bars'
-                    ? isCollected
-                      ? '已核验样本排行'
-                      : '干员热度排行'
-                    : isCollected
-                      ? '已采集年度样本'
-                      : '年度热度图谱'}
-                </h1>
-                <span className="chart-count">{ranked.length}</span>
-              </div>
-              <div className="chart-actions">
-                <label className="search-box">
-                  <Search size={15} aria-hidden="true" />
-                  <input
-                    ref={searchRef}
-                    aria-label="搜索干员"
-                    placeholder="搜索干员名称、职业…"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                  />
-                  {query ? (
-                    <button aria-label="清除搜索" onClick={() => setQuery('')}>
-                      <X size={13} aria-hidden="true" />
-                    </button>
-                  ) : (
-                    <kbd>/</kbd>
-                  )}
-                </label>
+        {scope === 'bilibili' || scope === 'lofter' || scope === 'douyin' ? (
+          <BilibiliCountsPage
+            platform={scope}
+            operators={operators}
+            includeCollaborations={includeCollaborations}
+            onIncludeCollaborationsChange={setIncludeCollaborations}
+            query={query}
+            onQueryChange={setQuery}
+            filters={filters}
+            onFiltersChange={setFilters}
+            filterOpen={filterOpen}
+            onFilterOpen={() => setFilterOpen(!filterOpen)}
+            onCloseFilters={closeFilters}
+            favorites={favorites}
+            favoritesOnly={favoritesOnly}
+            onClearFavorites={() => setFavoritesOnly(false)}
+            onFavorite={toggleFavorite}
+            searchRef={searchRef}
+            filterRef={filterRef}
+            mobileToggleRef={mobileToggleRef}
+            mobileMenu={mobileMenu}
+            onToggleMenu={() => setMobileMenu(!mobileMenu)}
+            onInfo={() => setDataOpen(true)}
+          />
+        ) : (
+          <>
+            <header className="topbar">
+              <div className="breadcrumb">
                 <button
-                  className="icon-button export-button"
-                  aria-label="导出当前筛选 CSV"
-                  title="导出当前筛选 CSV"
-                  onClick={exportCsv}
-                  disabled={!operators.length}
+                  ref={mobileToggleRef}
+                  className="icon-button mobile-menu-button"
+                  aria-label="打开平台菜单"
+                  aria-expanded={mobileMenu}
+                  onClick={() => setMobileMenu(!mobileMenu)}
                 >
-                  <ArrowDownToLine size={16} strokeWidth={1.5} aria-hidden="true" />
+                  <Menu size={20} aria-hidden="true" />
                 </button>
+                <span>创作观察</span>
+                <ChevronRight size={13} aria-hidden="true" />
+                <strong>{favoritesOnly ? '我的关注' : platformName}</strong>
               </div>
-            </div>
-
-            <div className="chart-options">
-              <div className="year-legend" aria-label="年份图例，点击切换该年份">
-                {YEARS.map((year) => (
-                  <button
-                    key={year}
-                    aria-pressed={years.includes(year)}
-                    title={`${years.includes(year) ? '隐藏' : '显示'} ${year} 年`}
-                    className={years.includes(year) ? '' : 'inactive'}
-                    onClick={() =>
-                      setYears((previous) =>
-                        previous.includes(year)
-                          ? previous.filter((y) => y !== year)
-                          : [...previous, year].sort(),
-                      )
-                    }
-                  >
-                    <i style={{ background: YEAR_COLORS[year] }} />
-                    {year}
-                  </button>
-                ))}
-              </div>
-              <button
-                className="sort-button"
-                onClick={() => setSort(sort === 'desc' ? 'asc' : 'desc')}
-              >
-                {sort === 'desc' ? (
-                  <ArrowDown size={12} aria-hidden="true" />
-                ) : (
-                  <ArrowUp size={12} aria-hidden="true" />
-                )}
-                {sort === 'desc' ? '热度降序' : '热度升序'}
-              </button>
-            </div>
-            {(activeFilters > 0 || favoritesOnly) && (
-              <div className="active-filter-chips">
-                {favoritesOnly && (
-                  <button onClick={() => setFavoritesOnly(false)}>
-                    我的关注
-                    <X size={11} aria-hidden="true" />
-                  </button>
-                )}
-                {filters.professions.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() =>
-                      setFilters({
-                        ...filters,
-                        professions: filters.professions.filter((v) => v !== p),
-                      })
-                    }
-                  >
-                    {p}
-                    <X size={11} aria-hidden="true" />
-                  </button>
-                ))}
-                {filters.factions.map((f) => (
-                  <button
-                    key={f}
-                    onClick={() =>
-                      setFilters({ ...filters, factions: filters.factions.filter((v) => v !== f) })
-                    }
-                  >
-                    {f}
-                    <X size={11} aria-hidden="true" />
-                  </button>
-                ))}
-                {filters.gender !== '全部' && (
-                  <button onClick={() => setFilters({ ...filters, gender: '全部' })}>
-                    {filters.gender === '其他' ? '其他／未知' : filters.gender}
-                    <X size={11} aria-hidden="true" />
-                  </button>
-                )}
-                {filters.minRarity > 1 && (
-                  <button onClick={() => setFilters({ ...filters, minRarity: 1 })}>
-                    {filters.minRarity} 星及以上
-                    <X size={11} aria-hidden="true" />
-                  </button>
-                )}
-                <button className="clear-filters" onClick={resetAll}>
-                  清除筛选
-                </button>
-              </div>
-            )}
-
-            {!operators.length ? (
-              <div className="empty-state">
-                {loadError ? (
-                  <>
-                    <Info size={30} aria-hidden="true" />
-                    <h3>档案暂时未能加载</h3>
-                    <p>请检查网络连接，再试一次。</p>
+              <div className="header-controls">
+                <Segmented
+                  label="图表类型"
+                  value={view}
+                  onChange={(value) => {
+                    setView(value);
+                    setTooltip(null);
+                  }}
+                  options={[
+                    {
+                      value: 'bars',
+                      label: '条形图',
+                      icon: <BarChart3 size={14} aria-hidden="true" />,
+                    },
+                    {
+                      value: 'heatmap',
+                      label: '热力图',
+                      icon: <Grid2X2 size={14} aria-hidden="true" />,
+                    },
+                  ]}
+                />
+                <span className="control-divider" />
+                <Segmented
+                  label="热度指标"
+                  value={metric}
+                  onChange={setMetric}
+                  options={[
+                    { value: 'likes', label: '点赞', icon: <Heart size={14} aria-hidden="true" /> },
+                    {
+                      value: 'views',
+                      label: '观看量',
+                      icon: <Play size={14} aria-hidden="true" />,
+                    },
+                  ]}
+                />
+                <div className="quick-filter-controls">
+                  <CollaborationToggle
+                    checked={includeCollaborations}
+                    onChange={setIncludeCollaborations}
+                  />
+                  <div className="filter-anchor">
                     <button
-                      className="outline-button"
-                      onClick={() => setLoadAttempt(loadAttempt + 1)}
+                      ref={filterRef}
+                      data-filter-trigger
+                      className={`outline-button filter-trigger ${activeFilters || filterOpen ? 'has-filter' : ''}`}
+                      aria-expanded={filterOpen}
+                      aria-controls="operator-filters"
+                      onClick={() => setFilterOpen(!filterOpen)}
                     >
-                      重新加载
+                      <SlidersHorizontal size={15} aria-hidden="true" />
+                      <span>筛选</span>
+                      {activeFilters ? (
+                        <span className="filter-count">{activeFilters}</span>
+                      ) : (
+                        <ChevronDown size={13} aria-hidden="true" />
+                      )}
                     </button>
-                  </>
-                ) : (
-                  <>
-                    <div className="loading-bars">
-                      <i />
-                      <i />
-                      <i />
-                    </div>
-                    <h3>正在整理干员档案</h3>
-                    <p>热爱的回响，即将呈现。</p>
-                  </>
-                )}
-              </div>
-            ) : !ranked.length ? (
-              <div className="empty-state">
-                <Search size={30} strokeWidth={1.2} aria-hidden="true" />
-                <h3>
-                  {favoritesOnly && !favorites.size ? '还没有关注的干员' : '暂时没有找到匹配的干员'}
-                </h3>
-                <p>
-                  {favoritesOnly && !favorites.size
-                    ? '打开干员详情，点击“关注干员”即可加入这里。'
-                    : '试试其他名称，或减少一些筛选条件。'}
-                </p>
-                <button className="outline-button" onClick={resetAll}>
-                  查看全部干员
-                  <ArrowRight size={14} aria-hidden="true" />
-                </button>
-              </div>
-            ) : !years.length ? (
-              <div className="empty-state">
-                <CalendarDays size={30} strokeWidth={1.2} aria-hidden="true" />
-                <h3>先选一个年份吧</h3>
-                <p>点击上方年份图例，开始查看热度。</p>
-                <button className="outline-button" onClick={() => setYears(YEARS)}>
-                  显示全部年份
-                </button>
-              </div>
-            ) : !hasData ? (
-              <div className="empty-state">
-                <Database size={30} strokeWidth={1.2} aria-hidden="true" />
-                <h3>当前范围还没有{metricLabel}数据</h3>
-                <p>
-                  {isCollected && scope === 'xiaohongshu' && metric === 'views'
-                    ? '小红书公开笔记页未取得可核验的观看量，保留为空，不计为 0。'
-                    : '未提供的指标保留为空，不会当作 0 参与排名。'}
-                </p>
-                <button className="outline-button" onClick={() => setDataOpen(true)}>
-                  查看数据与来源
-                  <ArrowRight size={14} aria-hidden="true" />
-                </button>
-              </div>
-            ) : (
-              <>
-                {view === 'bars' ? (
-                  <div className="bar-chart">
-                    <div className="bar-table-heading">
-                      <span>排名</span>
-                      <span>干员 / 阵营</span>
-                      <span className="axis-labels">
-                        {[0, 0.25, 0.5, 0.75, 1].map((value) => (
-                          <span key={value}>{compactNumber(maxValue * value)}</span>
-                        ))}
-                      </span>
-                      <span className="align-right">累计{metricLabel}</span>
-                    </div>
-                    <div className="chart-rows">
-                      {pageRows.map((row, i) => (
-                        <div
-                          key={row.operator.id}
-                          className="bar-row"
-                          style={{ '--row-index': i } as CSSProperties}
-                        >
-                          <span
-                            className={`rank-number ${row.available && currentPage === 1 && i < 3 ? 'top-rank' : ''}`}
-                          >
-                            {row.available
-                              ? String((currentPage - 1) * pageSize + i + 1).padStart(2, '0')
-                              : '—'}
-                          </span>
-                          {operatorButton(row)}
-                          <div className="bar-plot">
-                            {row.available ? (
-                              <div
-                                className="stacked-bar"
-                                style={{
-                                  width: `${(row.total / maxValue) * 100}%`,
-                                  minWidth: row.total > 0 ? 2 : 0,
-                                }}
-                              >
-                                {years
-                                  .filter((year) => (row.yearly[year] ?? 0) > 0)
-                                  .map((year) => (
-                                    <button
-                                      key={year}
-                                      className="bar-segment"
-                                      style={{
-                                        backgroundColor: YEAR_COLORS[year],
-                                        flexGrow: row.yearly[year] ?? 0,
-                                      }}
-                                      aria-label={`${row.operator.name}，${year} 年，${(row.yearly[year] ?? 0).toLocaleString('zh-CN')} 次${metricLabel}`}
-                                      onMouseEnter={(event) => showTooltip(event, row, year)}
-                                      onMouseMove={(event) => showTooltip(event, row, year)}
-                                      onMouseLeave={() => setTooltip(null)}
-                                      onFocus={(event) => {
-                                        const rect = event.currentTarget.getBoundingClientRect();
-                                        setTooltip({
-                                          x: Math.max(
-                                            105,
-                                            Math.min(
-                                              window.innerWidth - 110,
-                                              rect.x + rect.width / 2,
-                                            ),
-                                          ),
-                                          y: rect.y - 8,
-                                          title: `${row.operator.name} · ${year}`,
-                                          value: `${compactNumber(row.yearly[year] ?? 0)} 次${metricLabel}`,
-                                          color: YEAR_COLORS[year],
-                                        });
-                                      }}
-                                      onBlur={() => setTooltip(null)}
-                                      onClick={() => setDetail(row.operator)}
-                                    />
-                                  ))}
-                              </div>
-                            ) : (
-                              <span className="missing-value">未提供</span>
-                            )}
-                          </div>
-                          <button
-                            className="row-total"
-                            aria-label={`${row.operator.name}累计${metricLabel} ${row.available ? row.total.toLocaleString('zh-CN') : '未提供'}，查看详情`}
-                            onClick={() => setDetail(row.operator)}
-                          >
-                            {row.available ? compactNumber(row.total) : '—'}
-                            <ArrowUpRight size={12} aria-hidden="true" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                    {filterOpen && (
+                      <FilterPanel
+                        filters={filters}
+                        includeCollaborations={includeCollaborations}
+                        years={years}
+                        operators={operators}
+                        onClose={closeFilters}
+                        onApply={(nextFilters, nextYears) => {
+                          setFilters(nextFilters);
+                          setYears(nextYears);
+                          closeFilters();
+                        }}
+                      />
+                    )}
                   </div>
-                ) : (
-                  <div className="heatmap-scroll">
-                    <div
-                      className="heatmap"
-                      style={{ '--year-count': years.length } as CSSProperties}
-                    >
-                      <div className="heatmap-heading">
-                        <span>排名</span>
-                        <span>干员 / 阵营</span>
-                        {years.map((year) => (
-                          <span key={year}>{year}</span>
-                        ))}
-                        <span>合计</span>
-                      </div>
-                      {pageRows.map((row, i) => (
-                        <div className="heatmap-row" key={row.operator.id}>
-                          <span className="rank-number">
-                            {row.available
-                              ? String((currentPage - 1) * pageSize + i + 1).padStart(2, '0')
-                              : '—'}
-                          </span>
-                          {operatorButton(row)}
-                          {years.map((year) => {
-                            const value = row.yearly[year];
-                            const ratio = value === null ? 0 : Math.sqrt(value / maxHeatValue);
-                            return (
-                              <button
-                                className={`heat-cell ${ratio > 0.68 ? 'intense' : ''}`}
-                                key={year}
-                                style={{
-                                  backgroundColor:
-                                    value === null
-                                      ? 'var(--surface-2)'
-                                      : `color-mix(in srgb, #b96e48 ${Math.round(ratio * 86 + 6)}%, var(--surface))`,
-                                }}
-                                aria-label={`${row.operator.name}，${year} 年，${value === null ? '未提供数据' : `${value.toLocaleString('zh-CN')} 次${metricLabel}`}`}
-                                onMouseEnter={(event) => showTooltip(event, row, year)}
-                                onMouseLeave={() => setTooltip(null)}
-                                onClick={() => setDetail(row.operator)}
-                              >
-                                {value === null ? '—' : compactNumber(value)}
-                              </button>
-                            );
-                          })}
-                          <button className="row-total" onClick={() => setDetail(row.operator)}>
-                            {row.available ? compactNumber(row.total) : '—'}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="chart-footer">
-                  <span className="pagination-info">
-                    显示 {(currentPage - 1) * pageSize + 1}–
-                    {Math.min(currentPage * pageSize, ranked.length)} 位，共 {ranked.length} 位干员
-                  </span>
-                  <div className="pagination">
-                    <label>
-                      每页
-                      <select
-                        aria-label="每页干员数量"
-                        value={pageSize}
-                        onChange={(event) => setPageSize(Number(event.target.value))}
-                      >
-                        <option value={10}>10</option>
-                        <option value={20}>20</option>
-                        <option value={50}>50</option>
-                      </select>
-                      位
-                    </label>
-                    <span className="pagination-divider" />
-                    <button
-                      className="icon-button"
-                      aria-label="上一页"
-                      disabled={currentPage <= 1}
-                      onClick={() => setPage(Math.max(1, currentPage - 1))}
-                    >
-                      <ChevronLeft size={16} aria-hidden="true" />
-                    </button>
-                    <span>
-                      {currentPage} <small>/ {pages}</small>
+                </div>
+              </div>
+            </header>
+
+            <main id="main-content" className="main-content">
+              <section className="chart-section" aria-label="干员热度图表">
+                <div className="chart-toolbar">
+                  <div className="chart-title">
+                    <span className="chart-title-icon">
+                      {view === 'bars' ? (
+                        <BarChart3 size={17} strokeWidth={1.5} aria-hidden="true" />
+                      ) : (
+                        <Grid2X2 size={17} strokeWidth={1.5} aria-hidden="true" />
+                      )}
                     </span>
+                    <h1>
+                      {view === 'bars'
+                        ? isCollected
+                          ? '已核验样本排行'
+                          : '干员热度排行'
+                        : isCollected
+                          ? '已采集年度样本'
+                          : '年度热度图谱'}
+                    </h1>
+                    <span className="chart-count">{ranked.length}</span>
+                  </div>
+                  <div className="chart-actions">
+                    <label className="search-box">
+                      <Search size={15} aria-hidden="true" />
+                      <input
+                        ref={searchRef}
+                        aria-label="搜索干员"
+                        placeholder="搜索干员名称、职业…"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                      />
+                      {query ? (
+                        <button aria-label="清除搜索" onClick={() => setQuery('')}>
+                          <X size={13} aria-hidden="true" />
+                        </button>
+                      ) : (
+                        <kbd>/</kbd>
+                      )}
+                    </label>
                     <button
-                      className="icon-button"
-                      aria-label="下一页"
-                      disabled={currentPage >= pages}
-                      onClick={() => setPage(Math.min(pages, currentPage + 1))}
+                      className="icon-button export-button"
+                      aria-label="导出当前筛选 CSV"
+                      title="导出当前筛选 CSV"
+                      onClick={exportCsv}
+                      disabled={!operators.length}
                     >
-                      <ChevronRight size={16} aria-hidden="true" />
+                      <ArrowDownToLine size={16} strokeWidth={1.5} aria-hidden="true" />
                     </button>
                   </div>
                 </div>
-              </>
-            )}
-          </section>
-          <div className="chart-caption">
-            <span>
-              <Info size={13} strokeWidth={1.5} aria-hidden="true" />
-              {isDemo
-                ? '当前为演示数据，不代表实际平台热度。'
-                : isCollected
-                  ? `真实样本共 ${collection.live.metadata.workCount} 件作品，非全站总量；缺失指标不计为零。`
-                  : '当前为用户导入数据，未混入演示数值。'}
-              按作品发布年份分组。
-            </span>
-            {view === 'heatmap' && (
-              <span className="heat-scale">
-                较少
+
+                <div className="chart-options">
+                  <div className="year-legend" aria-label="年份图例，点击切换该年份">
+                    {YEARS.map((year) => (
+                      <button
+                        key={year}
+                        aria-pressed={years.includes(year)}
+                        title={`${years.includes(year) ? '隐藏' : '显示'} ${year} 年`}
+                        className={years.includes(year) ? '' : 'inactive'}
+                        onClick={() =>
+                          setYears((previous) =>
+                            previous.includes(year)
+                              ? previous.filter((y) => y !== year)
+                              : [...previous, year].sort(),
+                          )
+                        }
+                      >
+                        <i style={{ background: YEAR_COLORS[year] }} />
+                        {year}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    className="sort-button"
+                    onClick={() => setSort(sort === 'desc' ? 'asc' : 'desc')}
+                  >
+                    {sort === 'desc' ? (
+                      <ArrowDown size={12} aria-hidden="true" />
+                    ) : (
+                      <ArrowUp size={12} aria-hidden="true" />
+                    )}
+                    {sort === 'desc' ? '热度降序' : '热度升序'}
+                  </button>
+                </div>
+                {(activeFilters > 0 || favoritesOnly) && (
+                  <div className="active-filter-chips">
+                    {favoritesOnly && (
+                      <button onClick={() => setFavoritesOnly(false)}>
+                        我的关注
+                        <X size={11} aria-hidden="true" />
+                      </button>
+                    )}
+                    {filters.professions.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() =>
+                          setFilters({
+                            ...filters,
+                            professions: filters.professions.filter((v) => v !== p),
+                          })
+                        }
+                      >
+                        {p}
+                        <X size={11} aria-hidden="true" />
+                      </button>
+                    ))}
+                    {filters.factions.map((f) => (
+                      <button
+                        key={f}
+                        onClick={() =>
+                          setFilters({
+                            ...filters,
+                            factions: filters.factions.filter((v) => v !== f),
+                          })
+                        }
+                      >
+                        {f}
+                        <X size={11} aria-hidden="true" />
+                      </button>
+                    ))}
+                    {filters.gender !== '全部' && (
+                      <button onClick={() => setFilters({ ...filters, gender: '全部' })}>
+                        {filters.gender === '其他' ? '其他／未知' : filters.gender}
+                        <X size={11} aria-hidden="true" />
+                      </button>
+                    )}
+                    {filters.minRarity > 1 && (
+                      <button onClick={() => setFilters({ ...filters, minRarity: 1 })}>
+                        {filters.minRarity} 星及以上
+                        <X size={11} aria-hidden="true" />
+                      </button>
+                    )}
+                    <button className="clear-filters" onClick={resetAll}>
+                      清除筛选
+                    </button>
+                  </div>
+                )}
+
+                {!operators.length ? (
+                  <div className="empty-state">
+                    {loadError ? (
+                      <>
+                        <Info size={30} aria-hidden="true" />
+                        <h3>档案暂时未能加载</h3>
+                        <p>请检查网络连接，再试一次。</p>
+                        <button
+                          className="outline-button"
+                          onClick={() => setLoadAttempt(loadAttempt + 1)}
+                        >
+                          重新加载
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="loading-bars">
+                          <i />
+                          <i />
+                          <i />
+                        </div>
+                        <h3>正在整理干员档案</h3>
+                        <p>热爱的回响，即将呈现。</p>
+                      </>
+                    )}
+                  </div>
+                ) : !ranked.length ? (
+                  <div className="empty-state">
+                    <Search size={30} strokeWidth={1.2} aria-hidden="true" />
+                    <h3>
+                      {favoritesOnly && !favorites.size
+                        ? '还没有关注的干员'
+                        : '暂时没有找到匹配的干员'}
+                    </h3>
+                    <p>
+                      {favoritesOnly && !favorites.size
+                        ? '打开干员详情，点击“关注干员”即可加入这里。'
+                        : '试试其他名称，或减少一些筛选条件。'}
+                    </p>
+                    <button className="outline-button" onClick={resetAll}>
+                      查看全部干员
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : !years.length ? (
+                  <div className="empty-state">
+                    <CalendarDays size={30} strokeWidth={1.2} aria-hidden="true" />
+                    <h3>先选一个年份吧</h3>
+                    <p>点击上方年份图例，开始查看热度。</p>
+                    <button className="outline-button" onClick={() => setYears(YEARS)}>
+                      显示全部年份
+                    </button>
+                  </div>
+                ) : !hasData ? (
+                  <div className="empty-state">
+                    <Database size={30} strokeWidth={1.2} aria-hidden="true" />
+                    <h3>当前范围还没有{metricLabel}数据</h3>
+                    <p>
+                      {isCollected && scope === 'xiaohongshu' && metric === 'views'
+                        ? '小红书公开笔记页未取得可核验的观看量，保留为空，不计为 0。'
+                        : '未提供的指标保留为空，不会当作 0 参与排名。'}
+                    </p>
+                    <button className="outline-button" onClick={() => setDataOpen(true)}>
+                      查看数据与来源
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {view === 'bars' ? (
+                      <div className="bar-chart">
+                        <div className="bar-table-heading">
+                          <span>排名</span>
+                          <span>干员 / 阵营</span>
+                          <span className="axis-labels">
+                            {[0, 0.25, 0.5, 0.75, 1].map((value) => (
+                              <span key={value}>{compactNumber(maxValue * value)}</span>
+                            ))}
+                          </span>
+                          <span className="align-right">累计{metricLabel}</span>
+                        </div>
+                        <div className="chart-rows">
+                          {pageRows.map((row, i) => (
+                            <div
+                              key={row.operator.id}
+                              className="bar-row"
+                              style={{ '--row-index': i } as CSSProperties}
+                            >
+                              <span
+                                className={`rank-number ${row.available && currentPage === 1 && i < 3 ? 'top-rank' : ''}`}
+                              >
+                                {row.available
+                                  ? String((currentPage - 1) * pageSize + i + 1).padStart(2, '0')
+                                  : '—'}
+                              </span>
+                              {operatorButton(row)}
+                              <div className="bar-plot">
+                                {row.available ? (
+                                  <div
+                                    className="stacked-bar"
+                                    style={{
+                                      width: `${(row.total / maxValue) * 100}%`,
+                                      minWidth: row.total > 0 ? 2 : 0,
+                                    }}
+                                  >
+                                    {years
+                                      .filter((year) => (row.yearly[year] ?? 0) > 0)
+                                      .map((year) => (
+                                        <button
+                                          key={year}
+                                          className="bar-segment"
+                                          style={{
+                                            backgroundColor: YEAR_COLORS[year],
+                                            flexGrow: row.yearly[year] ?? 0,
+                                          }}
+                                          aria-label={`${row.operator.name}，${year} 年，${(row.yearly[year] ?? 0).toLocaleString('zh-CN')} 次${metricLabel}`}
+                                          onMouseEnter={(event) => showTooltip(event, row, year)}
+                                          onMouseMove={(event) => showTooltip(event, row, year)}
+                                          onMouseLeave={() => setTooltip(null)}
+                                          onFocus={(event) => {
+                                            const rect =
+                                              event.currentTarget.getBoundingClientRect();
+                                            setTooltip({
+                                              x: Math.max(
+                                                105,
+                                                Math.min(
+                                                  window.innerWidth - 110,
+                                                  rect.x + rect.width / 2,
+                                                ),
+                                              ),
+                                              y: rect.y - 8,
+                                              title: `${row.operator.name} · ${year}`,
+                                              value: `${compactNumber(row.yearly[year] ?? 0)} 次${metricLabel}`,
+                                              color: YEAR_COLORS[year],
+                                            });
+                                          }}
+                                          onBlur={() => setTooltip(null)}
+                                          onClick={() => setDetail(row.operator)}
+                                        />
+                                      ))}
+                                  </div>
+                                ) : (
+                                  <span className="missing-value">未提供</span>
+                                )}
+                              </div>
+                              <button
+                                className="row-total"
+                                aria-label={`${row.operator.name}累计${metricLabel} ${row.available ? row.total.toLocaleString('zh-CN') : '未提供'}，查看详情`}
+                                onClick={() => setDetail(row.operator)}
+                              >
+                                {row.available ? compactNumber(row.total) : '—'}
+                                <ArrowUpRight size={12} aria-hidden="true" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="heatmap-scroll">
+                        <div
+                          className="heatmap"
+                          style={{ '--year-count': years.length } as CSSProperties}
+                        >
+                          <div className="heatmap-heading">
+                            <span>排名</span>
+                            <span>干员 / 阵营</span>
+                            {years.map((year) => (
+                              <span key={year}>{year}</span>
+                            ))}
+                            <span>合计</span>
+                          </div>
+                          {pageRows.map((row, i) => (
+                            <div className="heatmap-row" key={row.operator.id}>
+                              <span className="rank-number">
+                                {row.available
+                                  ? String((currentPage - 1) * pageSize + i + 1).padStart(2, '0')
+                                  : '—'}
+                              </span>
+                              {operatorButton(row)}
+                              {years.map((year) => {
+                                const value = row.yearly[year];
+                                const ratio = value === null ? 0 : Math.sqrt(value / maxHeatValue);
+                                return (
+                                  <button
+                                    className={`heat-cell ${ratio > 0.68 ? 'intense' : ''}`}
+                                    key={year}
+                                    style={{
+                                      backgroundColor:
+                                        value === null
+                                          ? 'var(--surface-2)'
+                                          : `color-mix(in srgb, #b96e48 ${Math.round(ratio * 86 + 6)}%, var(--surface))`,
+                                    }}
+                                    aria-label={`${row.operator.name}，${year} 年，${value === null ? '未提供数据' : `${value.toLocaleString('zh-CN')} 次${metricLabel}`}`}
+                                    onMouseEnter={(event) => showTooltip(event, row, year)}
+                                    onMouseLeave={() => setTooltip(null)}
+                                    onClick={() => setDetail(row.operator)}
+                                  >
+                                    {value === null ? '—' : compactNumber(value)}
+                                  </button>
+                                );
+                              })}
+                              <button className="row-total" onClick={() => setDetail(row.operator)}>
+                                {row.available ? compactNumber(row.total) : '—'}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="chart-footer">
+                      <span className="pagination-info">
+                        显示 {(currentPage - 1) * pageSize + 1}–
+                        {Math.min(currentPage * pageSize, ranked.length)} 位，共 {ranked.length}{' '}
+                        位干员
+                      </span>
+                      <div className="pagination">
+                        <label>
+                          每页
+                          <select
+                            aria-label="每页干员数量"
+                            value={pageSize}
+                            onChange={(event) => setPageSize(Number(event.target.value))}
+                          >
+                            <option value={10}>10</option>
+                            <option value={20}>20</option>
+                            <option value={50}>50</option>
+                          </select>
+                          位
+                        </label>
+                        <span className="pagination-divider" />
+                        <button
+                          className="icon-button"
+                          aria-label="上一页"
+                          disabled={currentPage <= 1}
+                          onClick={() => setPage(Math.max(1, currentPage - 1))}
+                        >
+                          <ChevronLeft size={16} aria-hidden="true" />
+                        </button>
+                        <span>
+                          {currentPage} <small>/ {pages}</small>
+                        </span>
+                        <button
+                          className="icon-button"
+                          aria-label="下一页"
+                          disabled={currentPage >= pages}
+                          onClick={() => setPage(Math.min(pages, currentPage + 1))}
+                        >
+                          <ChevronRight size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </section>
+              <div className="chart-caption">
                 <span>
-                  {[10, 30, 50, 70, 90].map((p) => (
-                    <i key={p} style={{ background: `color-mix(in srgb, #b96e48 ${p}%, #fff)` }} />
-                  ))}
+                  <Info size={13} strokeWidth={1.5} aria-hidden="true" />
+                  {isDemo
+                    ? '当前为演示数据，不代表实际平台热度。'
+                    : isCollected
+                      ? `真实样本共 ${collection.live.metadata.workCount} 件作品，非全站总量；缺失指标不计为零。`
+                      : '当前为用户导入数据，未混入演示数值。'}
+                  按作品发布年份分组。
                 </span>
-                较多
-              </span>
-            )}
-          </div>
-          <footer className="page-footer">
-            <span>为喜欢的干员，记录每一次回响。</span>
-            <button onClick={() => setDataOpen(true)}>
-              <CircleHelp size={13} aria-hidden="true" />
-              统计口径与数据来源
-              <ArrowUpRight size={12} aria-hidden="true" />
-            </button>
-          </footer>
-        </main>
+                {view === 'heatmap' && (
+                  <span className="heat-scale">
+                    较少
+                    <span>
+                      {[10, 30, 50, 70, 90].map((p) => (
+                        <i
+                          key={p}
+                          style={{ background: `color-mix(in srgb, #b96e48 ${p}%, #fff)` }}
+                        />
+                      ))}
+                    </span>
+                    较多
+                  </span>
+                )}
+              </div>
+              <footer className="page-footer">
+                <span>为喜欢的干员，记录每一次回响。</span>
+                <button onClick={() => setDataOpen(true)}>
+                  <CircleHelp size={13} aria-hidden="true" />
+                  统计口径与数据来源
+                  <ArrowUpRight size={12} aria-hidden="true" />
+                </button>
+              </footer>
+            </main>
+          </>
+        )}
       </div>
-      {dataOpen && (
-        <DataPanel
-          operators={operators}
-          imported={imported}
-          activeMode={sourceMode}
-          onUseDemo={() => setDataMode('demo')}
-          onUseImported={() => setDataMode('imported')}
-          onImport={importDataset}
-          onClose={() => setDataOpen(false)}
-          collection={collection}
-          filteredIds={ranked.map((row) => row.operator.id)}
-          onUseCollected={() => setDataMode('collected')}
-        />
-      )}
+      {dataOpen &&
+        (scope === 'bilibili' || scope === 'lofter' || scope === 'douyin' ? (
+          <BilibiliCountInfo platform={scope} onClose={() => setDataOpen(false)} />
+        ) : (
+          <DataPanel
+            operators={operators}
+            imported={imported}
+            activeMode={sourceMode}
+            onUseDemo={() => setDataMode('demo')}
+            onUseImported={() => setDataMode('imported')}
+            onImport={importDataset}
+            onClose={() => setDataOpen(false)}
+            collection={collection}
+            filteredIds={ranked.map((row) => row.operator.id)}
+            onUseCollected={() => setDataMode('collected')}
+          />
+        ))}
       {detail && (
         <OperatorDetail
           operator={detail}
@@ -1086,7 +1169,7 @@ export default function App() {
         )}
       </div>
       <span className="sr-only" role="status" aria-live="polite">
-        {operators.length
+        {operators.length && scope !== 'bilibili' && scope !== 'lofter' && scope !== 'douyin'
           ? `当前显示${platformName}，${metricLabel}，${view === 'bars' ? '条形图' : '热力图'}，筛选结果 ${ranked.length} 位干员。`
           : ''}
       </span>

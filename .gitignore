@@ -11,6 +11,7 @@ public/data/live-heat.json*
 __pycache__/
 *.pyc
 .playwright-mcp/
+.playwright-cli/
 .openai/
 public/data/*
 !public/data/operators.json

@@ -7,14 +7,7 @@ import { aggregateWorks } from './aggregate';
 import { atomicJson } from './storage';
 import type { CollectionJob, PlatformId, Operator } from '../src/types';
 
-const SUPPORTED: PlatformId[] = [
-  'pixiv',
-  'bilibili',
-  'xiaohongshu',
-  'youtube',
-  'bluesky',
-  'tumblr',
-];
+const SUPPORTED: PlatformId[] = ['pixiv', 'xiaohongshu', 'youtube', 'bluesky', 'tumblr'];
 export function localCollectorPlugin(): Plugin {
   return {
     name: 'rhodes-http-data',
@@ -73,6 +66,18 @@ export function localCollectorPlugin(): Plugin {
         if (req.method === 'POST' && req.headers.origin && req.headers.origin !== `http://${host}`)
           return send(403, { error: '不接受其他网站发起的采集请求。' });
         try {
+          if (req.method === 'GET' && route === '/api/bilibili/tag-counts') {
+            const counts = read(path.join(local, 'bilibili/tag-counts.json'), null);
+            return counts ? send(200, counts) : send(404, { error: '尚未导出B站标签数量。' });
+          }
+          if (req.method === 'GET' && route === '/api/lofter/tag-counts') {
+            const counts = read(path.join(local, 'lofter/tag-counts.json'), null);
+            return counts ? send(200, counts) : send(404, { error: '尚未导出LOFTER标签统计。' });
+          }
+          if (req.method === 'GET' && route === '/api/douyin/tag-counts') {
+            const counts = read(path.join(local, 'douyin/tag-counts.json'), null);
+            return counts ? send(200, counts) : send(404, { error: '尚未导出抖音话题统计。' });
+          }
           if (
             req.method === 'GET' &&
             (route === '/api/live-data' || route === '/data/live-heat.json')

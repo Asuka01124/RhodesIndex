@@ -1,10 +1,11 @@
-"""LOFTER 角色标签汇总：只采集标签页的浏览和参与，默认保留全部别名。"""
+"""LOFTER 角色标签汇总：只读取434位干员的中文主标签浏览和参与。"""
 
 from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
 import json
+import math
 from pathlib import Path
 import sqlite3
 import sys
@@ -46,7 +47,7 @@ def main(argv=None):
     collect.add_argument("--operators", help="干员名称或 ID，用逗号分隔；默认全部 434 位。")
     collect.add_argument("--workers", type=int, default=3)
     collect.add_argument("--interval", type=float, default=3.5, help="全体线程共用的最小请求间隔（秒）。")
-    collect.add_argument("--primary-only", action="store_true", help="仅中文主标签；默认读取全部中日英及前缀别名。")
+    collect.add_argument("--primary-only", action="store_true", default=True, help="仅中文主标签，默认启用；保留此参数兼容旧命令。")
     group = collect.add_mutually_exclusive_group()
     group.add_argument("--resume", dest="resume", action="store_true", default=True, help="接续未完成批次，默认启用。")
     group.add_argument("--refresh", dest="resume", action="store_false", help="重新读取当前标签统计，保留已保存的标签快照。")
@@ -56,7 +57,12 @@ def main(argv=None):
     probe = sub.add_parser("probe", help="验证一个标签统计，不写数据库")
     probe.add_argument("--tag", default="拉普兰德")
     sub.add_parser("stats", help="显示每个标签的原始浏览和参与统计，不求和")
+    sub.add_parser("export", help="将已采集标签统计整理到网站，不请求LOFTER。")
     args = parser.parse_args(argv)
+    if args.command == "export":
+        from lofter_tag_export import export_counts
+        print(json.dumps(export_counts()["metadata"], ensure_ascii=False))
+        return 0
     if args.command == "session":
         store_session("lofter")
         return 0
@@ -81,7 +87,7 @@ def main(argv=None):
             print(item["tag"], item["views"]["display"] or "未取得", item["participation"]["display"] or "未取得",
                   ",".join(item["operatorIds"]), item["observedAt"], sep="\t")
         return 0
-    if not 1 <= args.workers <= 16 or args.interval < 1:
+    if not 1 <= args.workers <= 16 or not math.isfinite(args.interval) or args.interval < 1:
         parser.error("线程数需为 1–16，请求间隔至少 1 秒。")
     roster = json.loads((ROOT / "public/data/operators.json").read_text(encoding="utf-8"))
     selected = set((args.operators or "").split(",")) - {""}

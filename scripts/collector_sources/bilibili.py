@@ -76,23 +76,20 @@ class Bilibili(Source):
         id = item["id"]
         result = self.session.json(
             "GET",
-            "https://api.bilibili.com/x/web-interface/view",
+            "https://api.bilibili.com/x/web-interface/view/detail",
             params={"bvid": id},
             headers={"Referer": "https://www.bilibili.com/"},
         )
-        tags = self.session.json(
-            "GET",
-            "https://api.bilibili.com/x/tag/archive/tags",
-            params={"bvid": id},
-            headers={"Referer": "https://www.bilibili.com/"},
-        )
-        if (
-            result.get("code") != 0
-            or tags.get("code") != 0
-            or not isinstance(tags.get("data"), list)
-        ):
+        if result.get("code") in (-101, -111, -352, -412, -509, -799):
+            raise CollectError("B站详情或标签接口出现登录、验证或频率限制，已保存停止。", "blocked")
+        data = result.get("data")
+        if result.get("code") != 0 or not isinstance(data, dict):
             raise CollectError("B站作品详情或原生 TAG 不可读取。")
-        b = result["data"]
+        b, tags = data.get("View"), data.get("Tags")
+        if not isinstance(b, dict) or b.get("bvid") != id or not isinstance(tags, list):
+            raise CollectError("B站合并详情未返回对应作品或有效原生 TAG，未把缺失当成空标签。")
+        if any(not isinstance(t, dict) or not isinstance(t.get("tag_name"), str) for t in tags):
+            raise CollectError("B站合并详情的原生 TAG 结构不可识别。")
         stat = b.get("stat", {})
         return self.observation(
             id,
@@ -101,7 +98,7 @@ class Bilibili(Source):
             b.get("pubdate"),
             stat.get("like"),
             stat.get("view"),
-            [t.get("tag_name", "") for t in tags["data"]],
+            [t["tag_name"] for t in tags],
             {
                 "like": stat.get("like"),
                 "view": stat.get("view"),

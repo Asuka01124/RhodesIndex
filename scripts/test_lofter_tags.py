@@ -1,7 +1,7 @@
 """标签统计的定位、显示精度、恢复和定向删除验证。"""
 
 import json
-from contextlib import closing
+from contextlib import closing, nullcontext
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from collector_sources.lofter_tags import LofterTags, TagHeader, display_count
-from lofter_cleanup import clean_snapshot, purge_database
+from lofter_cleanup import clean_snapshot, purge_database, reset_project
 from lofter_tag_stats import TagStatsCollector, TagStatsStore, make_plan
 from tag_session import CollectError
 from tag_store import Store
@@ -78,6 +78,18 @@ class TagHeaderTests(unittest.TestCase):
 
 
 class TagStoreTests(unittest.TestCase):
+    def test_default_plan_contains_only_434_chinese_primary_tags(self):
+        roster = json.loads((Path(__file__).resolve().parents[1] / "public/data/operators.json").read_text(encoding="utf-8"))
+        plan = make_plan(roster)
+        self.assertEqual(len(plan), 434)
+        self.assertEqual({item["tag"] for item in plan}, {o["name"] for o in roster})
+        with patch("lofter_collect.run_lock", return_value=nullcontext()), patch("lofter_collect.TagStatsCollector") as collector:
+            from lofter_collect import main
+            collector.return_value.run.return_value = "completed"
+            main(["collect"])
+            self.assertTrue(collector.call_args.args[5])
+            self.assertEqual(len(collector.call_args.args[0]), 434)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -88,6 +100,7 @@ class TagStoreTests(unittest.TestCase):
         self.temp.cleanup()
 
     def collector(self, **kwargs):
+        kwargs.setdefault("primary_only", False)
         source = Mock()
         source.requests = 0
         source.read.side_effect = lambda tag: {"platform": "lofter", "kind": "tag_summary", "tag": tag,
@@ -96,7 +109,7 @@ class TagStoreTests(unittest.TestCase):
         return TagStatsCollector([OP], store=self.store, source=source, runtime=self.root / "runtime", **kwargs)
 
     def test_all_language_and_prefix_aliases_are_preserved(self):
-        plan = make_plan([OP])
+        plan = make_plan([OP], primary_only=False)
         self.assertEqual(len(plan), 6)
         self.assertIn("明日方舟Lappland", {i["tag"] for i in plan})
         self.assertEqual(len(make_plan([OP], primary_only=True)), 1)
@@ -137,6 +150,40 @@ class TagStoreTests(unittest.TestCase):
 
 
 class CleanupTests(unittest.TestCase):
+    def test_full_reset_clears_lofter_stats_history_and_queue_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            work_store = Store(root)
+            for platform in ("pixiv", "lofter"):
+                work_store.put({"id": "one", "platform": platform, "operatorIds": ["op"]})
+            work_store.db.close()
+            item = {"key": "拉普兰德", "operatorIds": ["op"], "scope": "bare"}
+            for platform in ("lofter", "bilibili"):
+                store = TagStatsStore(root, platform)
+                store.put("old", item, {"platform": platform, "tag": item["key"], "workCount": 7})
+                store.db.close()
+            result = purge_database(root / "http-collection.sqlite", clear_tag_stats=True)
+            self.assertEqual(result["removedWorks"], 1)
+            self.assertEqual(result["lofter_tag_stats"], 1)
+            with closing(sqlite3.connect(root / "http-collection.sqlite")) as db:
+                for table in ("stats", "history", "queue"):
+                    self.assertEqual(db.execute(f"SELECT count(*) FROM lofter_tag_{table}").fetchone()[0], 0)
+                    self.assertEqual(db.execute(f"SELECT count(*) FROM bilibili_tag_{table}").fetchone()[0], 1)
+                self.assertEqual(db.execute("SELECT key FROM works").fetchall(), [("pixiv:one",)])
+
+    def test_project_reset_removes_old_snapshots_and_prepares_primary_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_json = __import__("tag_store").atomic_json
+            atomic_json(root / ".local/observations.json", {"works": [
+                {"platform": "lofter"}, {"platform": "pixiv"}]})
+            report = reset_project(root)
+            self.assertEqual(report["snapshots"][0]["removed"]["works"], 1)
+            job = json.loads((root / ".local/lofter/http-job.json").read_text(encoding="utf-8"))
+            self.assertEqual((job["scope"], job["totalTags"], job["state"]), ("primary", 434, "pending"))
+            saved = json.loads((root / ".local/observations.json").read_text(encoding="utf-8"))
+            self.assertEqual(saved["works"], [{"platform": "pixiv"}])
+
     def test_deletes_only_lofter_and_preserves_other_platform_data(self):
         with tempfile.TemporaryDirectory() as directory:
             store = Store(Path(directory))
