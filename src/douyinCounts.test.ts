@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { douyinDisplayRows, douyinRoster, validateDouyinCounts } from './douyinCounts.ts';
 import type { DouyinTopicDataset, DouyinTopicRecord, Operator } from './types.ts';
-import { DOUYIN_AMBIGUOUS_OPERATOR_IDS, hideAmbiguousDouyinTopics } from './douyinAmbiguity.ts';
+import { DOUYIN_HIDE_MIN_PLAY_COUNT, hideAmbiguousDouyinTopics } from './douyinAmbiguity.ts';
 
 const row = (id: string, count: number | null): DouyinTopicRecord => ({
   operatorId: id,
@@ -83,21 +83,32 @@ test('抖音拒绝无来源时间、非法计数和不可信来源', () => {
   );
 });
 
-test('同名隐藏名单固定为29项，筛选或重排不误删其他角色，关闭后可恢复', () => {
-  assert.equal(DOUYIN_AMBIGUOUS_OPERATOR_IDS.size, 29);
+test('播放量10亿及以上的同名话题默认隐藏，关闭后可恢复且不误删其他角色', () => {
+  assert.equal(DOUYIN_HIDE_MIN_PLAY_COUNT, 1_000_000_000);
+  const records = [
+    row('large', DOUYIN_HIDE_MIN_PLAY_COUNT),
+    row('below', DOUYIN_HIDE_MIN_PLAY_COUNT - 1),
+    row('missing', null),
+    {
+      ...row('shared', DOUYIN_HIDE_MIN_PLAY_COUNT + 1),
+      operatorIds: ['shared', 'shared-form'],
+    },
+  ];
   const roster = [
-    { id: 'char_4125_rdoc' }, // 原第1名医生
-    { id: 'char_4058_pepe' }, // 原第30名佩佩
-    { id: 'char_002_amiya' },
+    { id: 'shared-form' },
+    { id: 'large' },
+    { id: 'below' },
+    { id: 'missing' },
+    { id: 'shared' },
   ] as Operator[];
   assert.deepEqual(
-    hideAmbiguousDouyinTopics(roster, true).map((operator) => operator.id),
-    ['char_4058_pepe', 'char_002_amiya'],
+    hideAmbiguousDouyinTopics(roster, true, records).map((operator) => operator.id),
+    ['below', 'missing'],
   );
   assert.deepEqual(
-    hideAmbiguousDouyinTopics([...roster].reverse(), true).map((operator) => operator.id),
-    ['char_002_amiya', 'char_4058_pepe'],
+    hideAmbiguousDouyinTopics([...roster].reverse(), true, records).map((operator) => operator.id),
+    ['missing', 'below'],
   );
-  assert.equal(hideAmbiguousDouyinTopics(roster, false).length, 3);
-  assert.equal(roster.length, 3);
+  assert.equal(hideAmbiguousDouyinTopics(roster, false, records).length, 5);
+  assert.equal(roster.length, 5);
 });

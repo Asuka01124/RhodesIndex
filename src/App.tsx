@@ -10,7 +10,6 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   CircleHelp,
   Database,
@@ -62,6 +61,7 @@ import { collaborationRoster } from './collaborations';
 
 const initialParams = new URLSearchParams(window.location.search);
 const supportedScopes: readonly string[] = ['all', ...PLATFORM_IDS];
+const INITIAL_VISIBLE = 100;
 function readLocal<T>(key: string, fallback: T): T {
   try {
     const value = localStorage.getItem(`rhodes.${key}`);
@@ -108,8 +108,7 @@ export default function App() {
   const [filters, setFilters] = useState<Filters>({ ...EMPTY_FILTERS });
   const [includeCollaborations, setIncludeCollaborations] = useState(true);
   const [sort, setSort] = useState<'asc' | 'desc'>('desc');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [showAll, setShowAll] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     const stored = readLocal<unknown>('favorites', []);
     return new Set(Array.isArray(stored) ? stored.filter((x) => typeof x === 'string') : []);
@@ -212,9 +211,7 @@ export default function App() {
     ],
   );
   const availableRows = useMemo(() => ranked.filter((r) => r.available), [ranked]);
-  const pages = Math.max(1, Math.ceil(ranked.length / pageSize));
-  const currentPage = Math.min(page, pages);
-  const pageRows = ranked.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pageRows = showAll ? ranked : ranked.slice(0, INITIAL_VISIBLE);
   const maxValue = Math.max(1, ...availableRows.map((r) => r.total));
   const maxHeatValue = Math.max(
     1,
@@ -230,7 +227,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    setPage(1);
+    setShowAll(false);
     setTooltip(null);
   }, [
     scope,
@@ -242,7 +239,6 @@ export default function App() {
     favoritesOnly,
     sort,
     sourceMode,
-    pageSize,
   ]);
   useEffect(() => {
     const params = new URLSearchParams();
@@ -917,11 +913,9 @@ export default function App() {
                               style={{ '--row-index': i } as CSSProperties}
                             >
                               <span
-                                className={`rank-number ${row.available && currentPage === 1 && i < 3 ? 'top-rank' : ''}`}
+                                className={`rank-number ${row.available && i < 3 ? 'top-rank' : ''}`}
                               >
-                                {row.available
-                                  ? String((currentPage - 1) * pageSize + i + 1).padStart(2, '0')
-                                  : '—'}
+                                {row.available ? String(i + 1).padStart(2, '0') : '—'}
                               </span>
                               {operatorButton(row)}
                               <div className="bar-plot">
@@ -1002,9 +996,7 @@ export default function App() {
                           {pageRows.map((row, i) => (
                             <div className="heatmap-row" key={row.operator.id}>
                               <span className="rank-number">
-                                {row.available
-                                  ? String((currentPage - 1) * pageSize + i + 1).padStart(2, '0')
-                                  : '—'}
+                                {row.available ? String(i + 1).padStart(2, '0') : '—'}
                               </span>
                               {operatorButton(row)}
                               {years.map((year) => {
@@ -1039,45 +1031,18 @@ export default function App() {
                     )}
                     <div className="chart-footer">
                       <span className="pagination-info">
-                        显示 {(currentPage - 1) * pageSize + 1}–
-                        {Math.min(currentPage * pageSize, ranked.length)} 位，共 {ranked.length}{' '}
-                        位干员
+                        显示 1–{pageRows.length} 位，共 {ranked.length} 位干员
                       </span>
-                      <div className="pagination">
-                        <label>
-                          每页
-                          <select
-                            aria-label="每页干员数量"
-                            value={pageSize}
-                            onChange={(event) => setPageSize(Number(event.target.value))}
-                          >
-                            <option value={10}>10</option>
-                            <option value={20}>20</option>
-                            <option value={50}>50</option>
-                          </select>
-                          位
-                        </label>
-                        <span className="pagination-divider" />
+                      {ranked.length > INITIAL_VISIBLE && (
                         <button
-                          className="icon-button"
-                          aria-label="上一页"
-                          disabled={currentPage <= 1}
-                          onClick={() => setPage(Math.max(1, currentPage - 1))}
+                          className={`expand-toggle ${showAll ? 'expanded' : ''}`}
+                          aria-expanded={showAll}
+                          onClick={() => setShowAll((value) => !value)}
                         >
-                          <ChevronLeft size={16} aria-hidden="true" />
+                          {showAll ? '收起，只看前 100 位' : `展开全部 ${ranked.length} 位`}
+                          <ChevronDown size={14} aria-hidden="true" />
                         </button>
-                        <span>
-                          {currentPage} <small>/ {pages}</small>
-                        </span>
-                        <button
-                          className="icon-button"
-                          aria-label="下一页"
-                          disabled={currentPage >= pages}
-                          onClick={() => setPage(Math.min(pages, currentPage + 1))}
-                        >
-                          <ChevronRight size={16} aria-hidden="true" />
-                        </button>
-                      </div>
+                      )}
                     </div>
                   </>
                 )}

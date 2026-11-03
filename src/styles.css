@@ -890,6 +890,31 @@ small {
   background: #e3ead8;
   height: 17px;
 }
+.expand-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid #e5ecd9;
+  border-radius: 999px;
+  background: #fff;
+  color: #4b5443;
+  font-size: var(--font-caption);
+  transition:
+    background 0.16s,
+    border-color 0.16s;
+  white-space: nowrap;
+}
+.expand-toggle:hover {
+  background: #f3f5ed;
+  border-color: #b9c1ae;
+}
+.expand-toggle svg {
+  transition: transform 0.16s;
+}
+.expand-toggle.expanded svg {
+  transform: rotate(180deg);
+}
 .chart-caption {
   display: flex;
   justify-content: space-between;

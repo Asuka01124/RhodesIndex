@@ -60,7 +60,7 @@ export function DouyinAmbiguityToggle({
         className="douyin-ambiguity-tooltip"
         hidden={!showDescription}
       >
-        隐藏同名影响较大的29项结果，减少无关内容对排行的干扰。关闭后可查看全部数据。
+        隐藏播放量 10 亿及以上的同名话题结果，减少无关内容对排行的干扰。关闭后可查看全部数据。
       </span>
     </span>
   );

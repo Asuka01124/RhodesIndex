@@ -8,7 +8,6 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Heart,
   Info,
@@ -32,6 +31,8 @@ import { hideAmbiguousDouyinTopics } from './douyinAmbiguity';
 
 const dateLabel = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚未取得';
+
+const INITIAL_VISIBLE = 100;
 
 export function BilibiliCountInfo({
   onClose,
@@ -70,7 +71,8 @@ export function BilibiliCountInfo({
         </p>
         {isDouyin && (
           <p>
-            默认隐藏用户标记的29项同名影响较大的结果。可在顶部“隐藏同名”开关中恢复查看；隐藏名单不随排序或筛选变化，原始数据保留。
+            默认隐藏播放量 10
+            亿及以上的同名话题结果。可在顶部“隐藏同名”开关中恢复查看；隐藏不随排序或筛选变化，原始数据保留。
           </p>
         )}
       </div>
@@ -149,8 +151,7 @@ export function BilibiliCountsPage({
     [isLofter, isDouyin, lofter.data, lofterMetric, douyin.data, bili.data],
   );
   const [sort, setSort] = useState<'asc' | 'desc'>('desc');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [showAll, setShowAll] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [exported, setExported] = useState(false);
   const deferredQuery = useDeferredValue(query);
@@ -158,7 +159,13 @@ export function BilibiliCountsPage({
     () =>
       rankTagCounts(
         collaborationRoster(
-          isDouyin ? hideAmbiguousDouyinTopics(douyinRoster(operators), hideAmbiguous) : operators,
+          isDouyin
+            ? hideAmbiguousDouyinTopics(
+                douyinRoster(operators),
+                hideAmbiguous,
+                douyin.data?.records,
+              )
+            : operators,
           includeCollaborations,
         ),
         countRecords,
@@ -171,6 +178,7 @@ export function BilibiliCountsPage({
       operators,
       isDouyin,
       hideAmbiguous,
+      douyin.data,
       countRecords,
       filters,
       includeCollaborations,
@@ -180,22 +188,19 @@ export function BilibiliCountsPage({
       favorites,
     ],
   );
-  const pages = Math.max(1, Math.ceil(ranked.length / pageSize));
-  const currentPage = Math.min(page, pages);
-  const rows = ranked.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const rows = showAll ? ranked : ranked.slice(0, INITIAL_VISIBLE);
   const max = Math.max(1, ...ranked.map((r) => r.record?.workCount ?? 0));
   const detail = operators.find((o) => o.id === detailId);
   const detailRecord = countRecords.find((r) => r.operatorId === detailId);
   const activeFilters = filterCount(filters);
   useEffect(() => {
-    setPage(1);
+    setShowAll(false);
   }, [
     deferredQuery,
     filters,
     includeCollaborations,
     favoritesOnly,
     sort,
-    pageSize,
     lofterMetric,
     platform,
     hideAmbiguous,
@@ -468,10 +473,8 @@ export function BilibiliCountsPage({
               <div className="bar-table">
                 {rows.map(({ operator: o, record: r }, i) => (
                   <div className="bar-row" key={o.id}>
-                    <span className={`rank-number ${currentPage === 1 && i < 3 ? 'top-rank' : ''}`}>
-                      {r?.workCount === null || !r
-                        ? '—'
-                        : String((currentPage - 1) * pageSize + i + 1).padStart(2, '0')}
+                    <span className={`rank-number ${i < 3 ? 'top-rank' : ''}`}>
+                      {r?.workCount === null || !r ? '—' : String(i + 1).padStart(2, '0')}
                     </span>
                     <button className="operator-button" onClick={() => setDetailId(o.id)}>
                       <img src={o.avatar} alt="" width={38} height={38} loading="lazy" />
@@ -519,44 +522,18 @@ export function BilibiliCountsPage({
               </div>
               <div className="chart-footer">
                 <span>
-                  显示 {(currentPage - 1) * pageSize + 1}–
-                  {Math.min(currentPage * pageSize, ranked.length)} 位，共 {ranked.length} 位干员
+                  显示 1–{rows.length} 位，共 {ranked.length} 位干员
                 </span>
-                <div className="pagination">
-                  <label>
-                    每页{' '}
-                    <select
-                      aria-label="每页干员数"
-                      value={pageSize}
-                      onChange={(e) => setPageSize(Number(e.target.value))}
-                    >
-                      {[10, 20, 50].map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                {ranked.length > INITIAL_VISIBLE && (
                   <button
-                    className="icon-button"
-                    aria-label="上一页"
-                    disabled={currentPage === 1}
-                    onClick={() => setPage(currentPage - 1)}
+                    className={`expand-toggle ${showAll ? 'expanded' : ''}`}
+                    aria-expanded={showAll}
+                    onClick={() => setShowAll((value) => !value)}
                   >
-                    <ChevronLeft size={16} aria-hidden="true" />
+                    {showAll ? '收起，只看前 100 位' : `展开全部 ${ranked.length} 位`}
+                    <ChevronDown size={14} aria-hidden="true" />
                   </button>
-                  <span>
-                    {currentPage} / {pages}
-                  </span>
-                  <button
-                    className="icon-button"
-                    aria-label="下一页"
-                    disabled={currentPage === pages}
-                    onClick={() => setPage(currentPage + 1)}
-                  >
-                    <ChevronRight size={16} aria-hidden="true" />
-                  </button>
-                </div>
+                )}
               </div>
             </>
           )}
