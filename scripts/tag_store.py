@@ -10,6 +10,29 @@ import threading
 import time
 import uuid
 from tag_session import LOCAL, ROOT
+
+
+WEBSITE_EXCLUDED_PLATFORMS = {"pixiv"}
+
+
+def website_snapshot(data):
+    """生成网站视图，保留采集库中的原始记录。"""
+    works = [row for row in data["works"] if row["platform"] not in WEBSITE_EXCLUDED_PLATFORMS]
+    metadata = {
+        **data["metadata"],
+        "generatedAt": max((row["observedAt"] for row in works), default=None),
+        "workCount": len(works),
+        "operatorCount": len({operator for row in works for operator in row["operatorIds"]}),
+        "platformCount": len({row["platform"] for row in works}),
+    }
+    metadata.pop("tagQueries", None)
+    return {
+        **data,
+        "works": works,
+        "records": [row for row in data["records"] if row["platform"] not in WEBSITE_EXCLUDED_PLATFORMS],
+        "coverage": [row for row in data["coverage"] if row["platform"] not in WEBSITE_EXCLUDED_PLATFORMS],
+        "metadata": metadata,
+    }
 from tag_sources import now
 
 
@@ -326,11 +349,12 @@ class Store:
 
     def export(self):
         data = self.snapshot()
-        atomic_json(self.directory / "http-live.json", data)
         # 原始 SQLite 是断点与作品的主存储；JSON 供网站直接读取。
+        live = website_snapshot(data) if self.directory == LOCAL else data
+        atomic_json(self.directory / "http-live.json", live)
         if self.directory == LOCAL:
             try:
-                atomic_json(ROOT / "public/data/live-heat.json", data)
+                atomic_json(ROOT / "public/data/live-heat.json", live)
             except PermissionError:
                 pass  # 网站本地接口读取 http-live.json，仍能呈现最新数据。
         return data

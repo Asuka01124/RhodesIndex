@@ -38,7 +38,7 @@ def make_plan(operators, roster=None, primary_only=True):
 
 class TagStatsStore:
     def __init__(self, directory=LOCAL, platform="lofter"):
-        if platform not in ("lofter", "bilibili", "douyin", "xiaohongshu"):
+        if platform not in ("lofter", "bilibili", "douyin", "weibo", "xiaohongshu"):
             raise ValueError("标签统计平台无效。")
         self.platform = platform
         self.directory = Path(directory)
