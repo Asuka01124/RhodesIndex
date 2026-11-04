@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { aggregateWorks } from './aggregate';
 import { atomicJson } from './storage';
-import type { CollectionJob, PlatformId, Operator } from '../src/types';
+import type { CollectionJob, LiveDataset, PlatformId, Operator } from '../src/types';
 
 const SUPPORTED: PlatformId[] = ['pixiv', 'xiaohongshu', 'youtube', 'bluesky', 'tumblr'];
 export function localCollectorPlugin(): Plugin {
@@ -23,10 +23,18 @@ export function localCollectorPlugin(): Plugin {
         }
       };
       const snapshot = () => {
-        const live = read(path.join(local, 'http-live.json'), null);
-        if (live) return live;
-        const raw = read(path.join(local, 'observations.json'), { works: [], coverage: [] });
-        return aggregateWorks(raw.works, raw.coverage);
+        const live = read(path.join(local, 'http-live.json'), null) as LiveDataset | null;
+        const visible = (row: { platform: PlatformId }) => row.platform !== 'pixiv';
+        if (
+          live &&
+          live.works.every(visible) &&
+          live.records.every(visible) &&
+          live.coverage.every(visible)
+        )
+          return live;
+        const raw =
+          live ?? read(path.join(local, 'observations.json'), { works: [], coverage: [] });
+        return aggregateWorks(raw.works.filter(visible), raw.coverage.filter(visible));
       };
       const state = () => {
         const data = snapshot();
@@ -81,6 +89,10 @@ export function localCollectorPlugin(): Plugin {
           if (req.method === 'GET' && route === '/api/xiaohongshu/tag-counts') {
             const counts = read(path.join(local, 'xiaohongshu/topic-counts.json'), null);
             return counts ? send(200, counts) : send(404, { error: '尚未采集小红书话题统计。' });
+          }
+          if (req.method === 'GET' && route === '/api/weibo/tag-counts') {
+            const counts = read(path.join(local, 'weibo/topic-counts.json'), null);
+            return counts ? send(200, counts) : send(404, { error: '尚未采集微博话题统计。' });
           }
           if (
             req.method === 'GET' &&

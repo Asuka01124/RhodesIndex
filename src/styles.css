@@ -3092,20 +3092,31 @@ small {
 .filter-trigger {
   height: 44px;
 }
-.icon-button,
-.export-button {
+.icon-button {
   width: 40px;
   height: 40px;
 }
+.chart-actions {
+  --chart-control-height: 42px;
+}
+.chart-actions :is(.search-box, .export-button) {
+  height: var(--chart-control-height);
+}
+.chart-actions .export-button {
+  width: var(--chart-control-height);
+}
 .search-box {
   width: 260px;
-  min-height: 42px;
 }
 .search-box input,
 .faction-search input,
 .collector-controls select {
   min-height: 40px;
   font-size: var(--font-body);
+}
+.chart-actions .search-box input {
+  min-height: 0;
+  height: 100%;
 }
 .filter-panel {
   width: 460px;
@@ -3273,10 +3284,6 @@ small {
   .search-box {
     width: auto;
     flex: 1;
-  }
-  .export-button {
-    width: 42px;
-    height: 42px;
   }
   .chart-options {
     padding: 0 14px 14px;
@@ -3590,30 +3597,36 @@ small {
     width: auto;
     order: 0;
   }
-  .lofter-tag-topbar {
+  .lofter-tag-topbar,
+  .weibo-topic-topbar {
     min-height: 128px;
     flex-wrap: wrap;
   }
-  .lofter-tag-topbar .breadcrumb {
+  .lofter-tag-topbar .breadcrumb,
+  .weibo-topic-topbar .breadcrumb {
     max-width: 100%;
   }
-  .lofter-tag-topbar .header-controls {
+  .lofter-tag-topbar .header-controls,
+  .weibo-topic-topbar .header-controls {
     width: 100%;
     order: 1;
   }
-  .lofter-tag-topbar .quick-filter-controls {
+  .lofter-tag-topbar .quick-filter-controls,
+  .weibo-topic-topbar .quick-filter-controls {
     position: static;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
     width: 100%;
   }
-  .lofter-tag-topbar .segmented {
+  .lofter-tag-topbar .segmented,
+  .weibo-topic-topbar .segmented {
     width: 100%;
     max-width: 112px;
     min-width: 0;
     justify-self: end;
   }
-  .lofter-tag-topbar .header-controls .segmented button {
+  .lofter-tag-topbar .header-controls .segmented button,
+  .weibo-topic-topbar .header-controls .segmented button {
     min-width: 0;
     min-height: 0;
     height: 100%;

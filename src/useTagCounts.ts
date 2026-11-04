@@ -1,84 +1,96 @@
-import { useEffect, useState } from 'react';
-import type { BilibiliCountDataset } from './types';
+import { useEffect, useSyncExternalStore } from 'react';
 import { validateTagCounts } from './tagCounts';
-import type { LofterTagDataset } from './types';
 import { validateLofterCounts } from './lofterCounts';
-import type { DouyinTopicDataset } from './types';
 import { validateDouyinCounts } from './douyinCounts';
 import { validateXiaohongshuCounts } from './xiaohongshuCounts';
+import { validateWeiboCounts } from './weiboCounts';
+import { createSnapshotResource } from './snapshotResource';
+
+const REFRESH_INTERVAL = 5000;
 
 const SNAPSHOT_LABELS = {
   bilibili: 'B站搜索结果数',
   lofter: 'LOFTER标签统计',
   douyin: '抖音话题播放量',
   xiaohongshu: '小红书话题浏览量',
+  weibo: '微博话题原创人数',
 };
 
-function useTagSnapshot<T>(
+function makeTagResource<T>(
   platform: keyof typeof SNAPSHOT_LABELS,
   validate: (value: unknown) => T,
+) {
+  return createSnapshotResource(async () => {
+    for (const url of [`/api/${platform}/tag-counts`, `/data/${platform}-tag-counts.json`]) {
+      try {
+        const response = await fetch(url, {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(10000),
+        });
+        if (response.ok) return validate(await response.json());
+      } catch {
+        // 本地接口不可用时尝试静态快照。
+      }
+    }
+    throw new Error(`暂时无法读取${SNAPSHOT_LABELS[platform]}，请检查本地采集快照。`);
+  });
+}
+
+const tagResources = {
+  bilibili: makeTagResource('bilibili', validateTagCounts),
+  lofter: makeTagResource('lofter', validateLofterCounts),
+  douyin: makeTagResource('douyin', validateDouyinCounts),
+  xiaohongshu: makeTagResource('xiaohongshu', validateXiaohongshuCounts),
+  weibo: makeTagResource('weibo', validateWeiboCounts),
+};
+
+const subscribeDisabled = () => () => {};
+
+function useTagSnapshot<T>(
+  resource: ReturnType<typeof createSnapshotResource<T>>,
   enabled: boolean,
 ) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const snapshot = useSyncExternalStore(
+    enabled ? resource.subscribe : subscribeDisabled,
+    resource.getSnapshot,
+  );
   useEffect(() => {
     if (!enabled) return;
-    const controller = new AbortController();
-    let busy = false;
-    const refresh = async () => {
-      if (busy) return;
-      busy = true;
-      try {
-        let next: T | null = null;
-        for (const url of [`/api/${platform}/tag-counts`, `/data/${platform}-tag-counts.json`]) {
-          try {
-            const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
-            if (!response.ok) throw new Error('暂时无法读取');
-            next = validate(await response.json());
-            break;
-          } catch {
-            if (controller.signal.aborted) return;
-          }
-        }
-        if (!next)
-          throw new Error(`暂时无法读取${SNAPSHOT_LABELS[platform]}，请检查本地采集快照。`);
-        if (!controller.signal.aborted) {
-          setData(next);
-          setError('');
-        }
-      } catch (reason) {
-        if (!controller.signal.aborted)
-          setError(reason instanceof Error ? reason.message : '数量读取失败');
-      } finally {
-        busy = false;
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    };
-    void refresh();
-    const timer = setInterval(() => {
-      void refresh();
-    }, 5000);
-    return () => {
-      clearInterval(timer);
-      controller.abort();
-    };
-  }, [platform, validate, enabled]);
-  return { data, loading, error };
+    void resource.refresh(REFRESH_INTERVAL);
+    const timer = window.setInterval(() => void resource.refresh(), REFRESH_INTERVAL);
+    return () => window.clearInterval(timer);
+  }, [resource, enabled]);
+  return snapshot;
+}
+
+export function preloadTagSnapshots() {
+  const preload = () => {
+    for (const resource of Object.values(tagResources)) void resource.refresh(REFRESH_INTERVAL);
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    const handle = window.requestIdleCallback(preload, { timeout: 1500 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const handle = window.setTimeout(preload, 250);
+  return () => window.clearTimeout(handle);
 }
 
 export function useTagCounts(enabled = true) {
-  return useTagSnapshot<BilibiliCountDataset>('bilibili', validateTagCounts, enabled);
+  return useTagSnapshot(tagResources.bilibili, enabled);
 }
 
 export function useLofterTagCounts(enabled = true) {
-  return useTagSnapshot<LofterTagDataset>('lofter', validateLofterCounts, enabled);
+  return useTagSnapshot(tagResources.lofter, enabled);
 }
 
 export function useDouyinTopicCounts(enabled = true) {
-  return useTagSnapshot<DouyinTopicDataset>('douyin', validateDouyinCounts, enabled);
+  return useTagSnapshot(tagResources.douyin, enabled);
 }
 
 export function useXiaohongshuTopicCounts(enabled = true) {
-  return useTagSnapshot('xiaohongshu', validateXiaohongshuCounts, enabled);
+  return useTagSnapshot(tagResources.xiaohongshu, enabled);
+}
+
+export function useWeiboTagCounts(enabled = true) {
+  return useTagSnapshot(tagResources.weibo, enabled);
 }

@@ -15,7 +15,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react';
-import type { Filters, Operator, TagSummaryRow } from './types';
+import type { Filters, NativeTagCount, Operator, TagSummaryRow } from './types';
 import { compactNumber, csvEscape, EMPTY_FILTERS, filterCount, YEARS } from './domain';
 import { BrandIcon, downloadFile, Modal, Segmented } from './ui';
 import { FilterPanel } from './Filters';
@@ -25,6 +25,7 @@ import {
   useLofterTagCounts,
   useDouyinTopicCounts,
   useXiaohongshuTopicCounts,
+  useWeiboTagCounts,
 } from './useTagCounts';
 import { lofterDisplayRows } from './lofterCounts';
 import { douyinDisplayRows, douyinRoster } from './douyinCounts';
@@ -34,9 +35,25 @@ import { DouyinAmbiguityToggle } from './DouyinAmbiguityToggle';
 import { hideAmbiguousDouyinTopics } from './douyinAmbiguity';
 import { RaritySlider } from './RaritySlider';
 import { XIAOHONGSHU_METHOD, xiaohongshuDisplayRows } from './xiaohongshuCounts';
+import {
+  WEIBO_METRICS,
+  WEIBO_METRIC_LABELS,
+  WEIBO_METHOD,
+  weiboDisplayRows,
+  type WeiboMetric,
+} from './weiboCounts';
 
 const dateLabel = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚未取得';
+
+const nativeLabel = (value: NativeTagCount | null | undefined) =>
+  value
+    ? value.exact
+      ? value.display
+      : value.estimate !== null
+        ? `约 ${value.display}`
+        : value.display
+    : '未取得';
 
 const INITIAL_VISIBLE = 100;
 const PLATFORM_NAMES = {
@@ -44,6 +61,7 @@ const PLATFORM_NAMES = {
   lofter: 'LOFTER',
   douyin: '抖音',
   xiaohongshu: '小红书',
+  weibo: '微博',
 };
 type CountPlatform = keyof typeof PLATFORM_NAMES;
 
@@ -65,6 +83,25 @@ export function BilibiliCountInfo({
             容易撞名的角色会加「明日方舟」，比如 #明日方舟爱丽丝。
           </p>
           <p>阿米娅的三个职业形态共用 #阿米娅。找不到对应话题或浏览量时留空。</p>
+          <p>点击排行数值可查看实际话题、来源和采集时间。</p>
+        </div>
+      </Modal>
+    );
+  }
+  if (platform === 'weibo') {
+    return (
+      <Modal title="微博热度规则" onClose={onClose}>
+        <div className="count-method">
+          <h3>角色话题热度</h3>
+          <p>{WEIBO_METHOD}</p>
+          <p>
+            阿米娅各职业形态共用 #阿米娅#，爱丽丝使用
+            #明日方舟爱丽丝#。原创人数、讨论次数和阅读次数均读取话题页的数据总览。
+          </p>
+          <p>
+            显示为万或亿的数值保留原文并按约数排序；话题页没有数据总览时保留为空，不补
+            0。不同话题可能包含同一作者或内容，不合并、不相加。
+          </p>
           <p>点击排行数值可查看实际话题、来源和采集时间。</p>
         </div>
       </Modal>
@@ -157,20 +194,25 @@ export function BilibiliCountsPage({
   const isLofter = platform === 'lofter';
   const isDouyin = platform === 'douyin';
   const isXiaohongshu = platform === 'xiaohongshu';
+  const isWeibo = platform === 'weibo';
   const platformName = PLATFORM_NAMES[platform];
   const [lofterMetric, setLofterMetric] = useState<'participation' | 'views'>('participation');
+  const [weiboMetric, setWeiboMetric] = useState<WeiboMetric>('originalAuthors');
   const [hideAmbiguous, setHideAmbiguous] = useState(true);
   const bili = useTagCounts(platform === 'bilibili');
   const lofter = useLofterTagCounts(isLofter);
   const douyin = useDouyinTopicCounts(isDouyin);
   const xiaohongshu = useXiaohongshuTopicCounts(isXiaohongshu);
+  const weibo = useWeiboTagCounts(isWeibo);
   const { data, loading, error } = isLofter
     ? lofter
     : isDouyin
       ? douyin
       : isXiaohongshu
         ? xiaohongshu
-        : bili;
+        : isWeibo
+          ? weibo
+          : bili;
   const countLabel = isLofter
     ? lofterMetric === 'participation'
       ? '参与数'
@@ -179,7 +221,9 @@ export function BilibiliCountsPage({
       ? '话题播放量'
       : isXiaohongshu
         ? '话题浏览量'
-        : '搜索结果数';
+        : isWeibo
+          ? WEIBO_METRIC_LABELS[weiboMetric]
+          : '搜索结果数';
   const countRecords = useMemo<TagSummaryRow[]>(
     () =>
       isLofter
@@ -188,15 +232,20 @@ export function BilibiliCountsPage({
           ? douyinDisplayRows(douyin.data)
           : isXiaohongshu
             ? xiaohongshuDisplayRows(xiaohongshu.data)
-            : (bili.data?.records ?? []),
+            : isWeibo
+              ? weiboDisplayRows(weibo.data, weiboMetric)
+              : (bili.data?.records ?? []),
     [
       isLofter,
       isDouyin,
       isXiaohongshu,
+      isWeibo,
       lofter.data,
       lofterMetric,
       douyin.data,
       xiaohongshu.data,
+      weibo.data,
+      weiboMetric,
       bili.data,
     ],
   );
@@ -215,7 +264,7 @@ export function BilibiliCountsPage({
                 hideAmbiguous,
                 douyin.data?.records,
               )
-            : isXiaohongshu
+            : isXiaohongshu || isWeibo
               ? douyinRoster(operators)
               : operators,
           includeCollaborations,
@@ -230,6 +279,7 @@ export function BilibiliCountsPage({
       operators,
       isDouyin,
       isXiaohongshu,
+      isWeibo,
       hideAmbiguous,
       douyin.data,
       countRecords,
@@ -255,6 +305,7 @@ export function BilibiliCountsPage({
     favoritesOnly,
     sort,
     lofterMetric,
+    weiboMetric,
     platform,
     hideAmbiguous,
   ]);
@@ -327,7 +378,7 @@ export function BilibiliCountsPage({
             ]),
           ];
     downloadFile(
-      `罗德指数-${platformName}-标签统计.csv`,
+      `罗德指数-${platformName}-${isDouyin ? '话题' : '标签'}统计.csv`,
       '\ufeff' + matrix.map((row) => row.map(csvEscape).join(',')).join('\r\n'),
       'text/csv;charset=utf-8',
     );
@@ -341,7 +392,7 @@ export function BilibiliCountsPage({
   return (
     <>
       <header
-        className={`topbar bili-count-topbar${isLofter ? ' lofter-tag-topbar' : ''}${isDouyin ? ' douyin-topic-topbar' : ''}`}
+        className={`topbar bili-count-topbar${isLofter ? ' lofter-tag-topbar' : ''}${isDouyin ? ' douyin-topic-topbar' : ''}${isWeibo ? ' weibo-topic-topbar' : ''}`}
       >
         <div className="breadcrumb">
           <button
@@ -373,6 +424,14 @@ export function BilibiliCountsPage({
             )}
             {isDouyin && (
               <DouyinAmbiguityToggle checked={hideAmbiguous} onChange={setHideAmbiguous} />
+            )}
+            {isWeibo && (
+              <Segmented
+                label="微博统计指标"
+                value={weiboMetric}
+                onChange={setWeiboMetric}
+                options={WEIBO_METRICS.map((metric) => ({ ...metric }))}
+              />
             )}
             <CollaborationToggle
               checked={includeCollaborations}
@@ -414,7 +473,10 @@ export function BilibiliCountsPage({
         </div>
       </header>
       <main id="main-content" className="main-content bili-count-page">
-        <section className="chart-section" aria-label={`${platformName}标签统计排行`}>
+        <section
+          className="chart-section"
+          aria-label={`${platformName}${isDouyin || isXiaohongshu || isWeibo ? '话题' : '标签'}统计排行`}
+        >
           <div className="chart-toolbar">
             <div className="chart-title">
               <span className="chart-title-icon">
@@ -423,7 +485,7 @@ export function BilibiliCountsPage({
               <h1>
                 {isLofter
                   ? `标签${countLabel}排行`
-                  : isDouyin || isXiaohongshu
+                  : isDouyin || isXiaohongshu || isWeibo
                     ? `${countLabel}排行`
                     : '组合搜索结果数'}
               </h1>
@@ -447,11 +509,11 @@ export function BilibiliCountsPage({
                   <kbd>/</kbd>
                 )}
               </label>
-              {isXiaohongshu ? (
+              {isXiaohongshu || isWeibo ? (
                 <button
                   className="icon-button export-button"
-                  aria-label="小红书热度规则"
-                  title="小红书热度规则"
+                  aria-label={`${platformName}热度规则`}
+                  title={`${platformName}热度规则`}
                   aria-haspopup="dialog"
                   onClick={onInfo}
                 >
@@ -460,8 +522,8 @@ export function BilibiliCountsPage({
               ) : (
                 <button
                   className="icon-button export-button"
-                  aria-label="导出标签统计 CSV"
-                  title="导出标签统计 CSV"
+                  aria-label={`导出${isDouyin ? '话题' : '标签'}统计 CSV`}
+                  title={`导出${isDouyin ? '话题' : '标签'}统计 CSV`}
                   onClick={exportCsv}
                   disabled={!data}
                 >
@@ -480,6 +542,8 @@ export function BilibiliCountsPage({
                 <span className="summary-tag">同名话题仍影响排名，请自行甄别</span>
               ) : loading && !data ? (
                 '正在读取标签统计…'
+              ) : isWeibo ? (
+                `已取得 ${data?.metadata.availableTags ?? 0} / ${data?.metadata.plannedTags ?? douyinRoster(operators).length} 个话题的${countLabel}`
               ) : (
                 `已取得 ${data?.metadata.availableTags ?? 0} / ${data?.metadata.plannedTags ?? operators.length} 位干员的${isLofter ? '标签统计' : '搜索统计'}`
               )}
@@ -616,7 +680,9 @@ export function BilibiliCountsPage({
                 ? '同名话题累计播放量；角色归属待核实，可能包含其他内容，不代表作品数。'
                 : isXiaohongshu
                   ? '未取得浏览量的话题保留为空。'
-                  : '角色名＋明日方舟，联动再加作品名；数量来自组合搜索，不要求打齐标签，不代表全站总量。'}
+                  : isWeibo
+                    ? '角色话题的原生统计；万、亿为约数，未取得的指标留空。'
+                    : '角色名＋明日方舟，联动再加作品名；数量来自组合搜索，不要求打齐标签，不代表全站总量。'}
           </span>
           <span>更新至 {dateLabel(data?.metadata.generatedAt)}</span>
         </div>
@@ -661,7 +727,8 @@ function CountDetail({
   onClose: () => void;
 }) {
   const isXiaohongshu = platform === 'xiaohongshu';
-  const isTopic = platform === 'douyin' || isXiaohongshu;
+  const isWeibo = platform === 'weibo';
+  const isTopic = platform === 'douyin' || isXiaohongshu || isWeibo;
   return (
     <Modal
       title={`${PLATFORM_NAMES[platform]}${isTopic ? '话题' : '标签'}统计`}
@@ -701,15 +768,15 @@ function CountDetail({
         <strong>
           {r?.workCount == null
             ? '未取得'
-            : `${r.lowerBound ? '≥ ' : r.approximate ? '约 ' : ''}${isTopic ? r.workCount.toLocaleString('zh-CN') : (r.displayValue ?? r.workCount.toLocaleString('zh-CN'))}`}
+            : `${r.lowerBound ? '≥ ' : r.approximate ? '约 ' : ''}${isTopic && !isWeibo ? r.workCount.toLocaleString('zh-CN') : (r.displayValue ?? r.workCount.toLocaleString('zh-CN'))}`}
         </strong>
         <p>
           {platform === 'lofter' ? '来源标签' : isTopic ? '来源话题' : '干员名称'}：
           {isTopic ? '#' : ''}
-          {r?.nativeTag || (isXiaohongshu ? '未取得' : o.name)}
+          {r?.nativeTag || (isXiaohongshu || isWeibo ? '未取得' : o.name)}
         </p>
         {platform === 'bilibili' && <p>搜索关键词：{r?.query || '尚未取得'}</p>}
-        {isTopic && <p>话题 ID：{r?.topicId || '未取得'}</p>}
+        {isTopic && !isWeibo && <p>话题 ID：{r?.topicId || '未取得'}</p>}
       </div>
       <dl className="count-detail-meta">
         <div>
@@ -752,6 +819,22 @@ function CountDetail({
           </div>
         </dl>
       )}
+      {isWeibo && (
+        <dl className="count-detail-meta">
+          <div>
+            <dt>原创人数</dt>
+            <dd>{nativeLabel(r?.nativeOriginalAuthors)}</dd>
+          </div>
+          <div>
+            <dt>讨论次数</dt>
+            <dd>{nativeLabel(r?.nativeDiscussions)}</dd>
+          </div>
+          <div>
+            <dt>阅读次数</dt>
+            <dd>{nativeLabel(r?.nativeReads)}</dd>
+          </div>
+        </dl>
+      )}
       {platform === 'bilibili' && r?.countedWindows !== undefined && (
         <p className="muted">
           已取得 {r.countedWindows} 个时间范围的小计，待处理 {r.pendingWindows ?? 0} 个范围。
@@ -786,7 +869,9 @@ function CountDetail({
             ? '这是平台同名话题的原生累计播放量 view_count；角色归属尚待核实，可能包含其他内容，不能当作作品量或角色专属热度。'
             : isXiaohongshu
               ? XIAOHONGSHU_METHOD
-              : '数量来自组合关键词搜索，可包含标题或简介命中，并非严格标签交集。未完成分段或触顶时仅展示下限。'}{' '}
+              : isWeibo
+                ? '原创人数、讨论次数和阅读次数均来自话题页“数据总览”；万、亿为约数，缺失保留为空，不能当作微博全站热度。'
+                : '数量来自组合关键词搜索，可包含标题或简介命中，并非严格标签交集。未完成分段或触顶时仅展示下限。'}{' '}
         同一作品可能出现在多个干员标签中，不直接相加。
       </p>
     </Modal>

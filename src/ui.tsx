@@ -16,6 +16,7 @@ import {
 const brands = {
   pixiv: siPixiv,
   bilibili: siBilibili,
+  weibo: siSinaweibo,
   sinaweibo: siSinaweibo,
   x: siX,
   youtube: siYoutube,

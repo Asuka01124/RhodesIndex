@@ -54,6 +54,7 @@ import { BrandIcon, downloadFile, Modal, Segmented } from './ui';
 import { FilterPanel } from './Filters';
 import { DataPanel } from './DataPanel';
 import { useLiveData } from './useLiveData';
+import { preloadTagSnapshots } from './useTagCounts';
 import { SidebarHighlight } from './SidebarHighlight';
 import { BilibiliCountsPage, BilibiliCountInfo } from './BilibiliCountsPage';
 import { CollaborationToggle } from './CollaborationToggle';
@@ -123,7 +124,11 @@ export default function App() {
   const [imported, setImported] = useState<HeatDataset | null>(null);
   const [sourceMode, setSourceMode] = useState<DataMode>('collected');
   const isTagSummary =
-    scope === 'bilibili' || scope === 'lofter' || scope === 'douyin' || scope === 'xiaohongshu';
+    scope === 'bilibili' ||
+    scope === 'lofter' ||
+    scope === 'douyin' ||
+    scope === 'xiaohongshu' ||
+    scope === 'weibo';
   const collection = useLiveData(!isTagSummary);
   const [detail, setDetail] = useState<Operator | null>(null);
   const [toast, setToast] = useState('');
@@ -172,6 +177,10 @@ export default function App() {
       });
     return () => controller.abort();
   }, [loadAttempt]);
+  const rosterReady = operators.length > 0;
+  useEffect(() => {
+    if (rosterReady) return preloadTagSnapshots();
+  }, [rosterReady]);
 
   const demoRecords = useMemo(
     () => (isDemo ? createDemoRecords(operators) : []),
@@ -872,7 +881,11 @@ export default function App() {
                 ) : !hasData ? (
                   <div className="empty-state">
                     <Database size={30} strokeWidth={1.2} aria-hidden="true" />
-                    <h3>当前范围还没有{metricLabel}数据</h3>
+                    <h3>
+                      {isCollected && scope === 'pixiv'
+                        ? 'Pixiv 数据整理中，暂未接入'
+                        : `当前范围还没有${metricLabel}数据`}
+                    </h3>
                     <p>未提供的指标保留为空，不会当作 0 参与排名。</p>
                     <button className="outline-button" onClick={() => setDataOpen(true)}>
                       查看数据与来源
