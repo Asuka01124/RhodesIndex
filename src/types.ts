@@ -209,6 +209,8 @@ export interface TagSummaryRow extends BilibiliTagCount {
   nativeOriginalAuthors?: NativeTagCount | null;
   nativeDiscussions?: NativeTagCount | null;
   nativeReads?: NativeTagCount | null;
+  nativePosts?: NativeTagCount | null;
+  publishedAt?: string | null;
 }
 
 export interface DouyinTopicRecord {

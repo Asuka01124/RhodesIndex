@@ -60,9 +60,14 @@ import { collaborationRoster } from './collaborations';
 import { RaritySlider } from './RaritySlider';
 
 const initialParams = new URLSearchParams(window.location.search);
+type PageScope = PlatformId | 'skland';
 const DEFAULT_PLATFORM = 'bilibili';
-const supportedScopes: readonly string[] = PLATFORMS.map((platform) => platform.id);
+const supportedScopes: readonly string[] = [...PLATFORMS.map((platform) => platform.id), 'skland'];
 const communityStart = PLATFORMS.findIndex((platform) => platform.id === 'lofter');
+const communityPages = [
+  { id: 'skland', name: '森空岛', icon: 'skland' } as const,
+  ...PLATFORMS.slice(communityStart),
+];
 const INITIAL_VISIBLE = 100;
 function readLocal<T>(key: string, fallback: T): T {
   try {
@@ -84,11 +89,12 @@ export default function App() {
   const [operators, setOperators] = useState<Operator[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [scope, setScope] = useState<PlatformId>(
+  const [pageScope, setPageScope] = useState<PageScope>(
     supportedScopes.includes(initialParams.get('platform') ?? '')
-      ? (initialParams.get('platform') as PlatformId)
+      ? (initialParams.get('platform') as PageScope)
       : DEFAULT_PLATFORM,
   );
+  const scope = pageScope === 'skland' ? DEFAULT_PLATFORM : pageScope;
   const [metric, setMetric] = useState<Metric>(
     initialParams.get('metric') === 'views' ? 'views' : 'likes',
   );
@@ -124,11 +130,12 @@ export default function App() {
   const [imported, setImported] = useState<HeatDataset | null>(null);
   const [sourceMode, setSourceMode] = useState<DataMode>('collected');
   const isTagSummary =
-    scope === 'bilibili' ||
-    scope === 'lofter' ||
-    scope === 'douyin' ||
-    scope === 'xiaohongshu' ||
-    scope === 'weibo';
+    pageScope === 'bilibili' ||
+    pageScope === 'lofter' ||
+    pageScope === 'douyin' ||
+    pageScope === 'xiaohongshu' ||
+    pageScope === 'weibo' ||
+    pageScope === 'skland';
   const collection = useLiveData(!isTagSummary);
   const [detail, setDetail] = useState<Operator | null>(null);
   const [toast, setToast] = useState('');
@@ -246,7 +253,7 @@ export default function App() {
     setShowAll(false);
     setTooltip(null);
   }, [
-    scope,
+    pageScope,
     metric,
     years,
     filters,
@@ -258,7 +265,7 @@ export default function App() {
   ]);
   useEffect(() => {
     const params = new URLSearchParams();
-    params.set('platform', scope);
+    params.set('platform', pageScope);
     if (!isTagSummary && metric !== 'likes') params.set('metric', metric);
     if (!isTagSummary && view !== 'bars') params.set('view', view);
     if (query) params.set('q', query);
@@ -268,7 +275,7 @@ export default function App() {
       '',
       `${window.location.pathname}${params.size ? `?${params}` : ''}`,
     );
-  }, [scope, isTagSummary, metric, view, query, years]);
+  }, [pageScope, isTagSummary, metric, view, query, years]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const tag = (event.target as HTMLElement).tagName;
@@ -341,8 +348,8 @@ export default function App() {
     };
   }, [mobileMenu, isMobile]);
 
-  function changePlatform(value: PlatformId) {
-    setScope(value);
+  function changePlatform(value: PageScope) {
+    setPageScope(value);
     setFavoritesOnly(false);
     setMobileMenu(false);
     setFilterOpen(false);
@@ -472,7 +479,10 @@ export default function App() {
         aria-label="平台导航"
         inert={isMobile && !mobileMenu}
       >
-        <SidebarHighlight selection={favoritesOnly ? 'favorites' : scope} collapsed={collapsed} />
+        <SidebarHighlight
+          selection={favoritesOnly ? 'favorites' : pageScope}
+          collapsed={collapsed}
+        />
         <button
           className="brand"
           aria-label="罗德指数，返回哔哩哔哩"
@@ -494,27 +504,27 @@ export default function App() {
               <button
                 key={p.id}
                 title={p.name}
-                className={`nav-item ${scope === p.id && !favoritesOnly ? 'active' : ''}`}
-                aria-current={scope === p.id && !favoritesOnly ? 'page' : undefined}
+                className={`nav-item ${pageScope === p.id && !favoritesOnly ? 'active' : ''}`}
+                aria-current={pageScope === p.id && !favoritesOnly ? 'page' : undefined}
                 onClick={() => changePlatform(p.id)}
               >
                 <BrandIcon name={p.icon} size={17} />
                 <span>{p.name}</span>
-                {scope === p.id && <span className="nav-active-dot" />}
+                {pageScope === p.id && <span className="nav-active-dot" />}
               </button>
             ))}
             <p className="nav-label secondary-label">更多创作社区</p>
-            {PLATFORMS.slice(communityStart).map((p) => (
+            {communityPages.map((p) => (
               <button
                 key={p.id}
                 title={p.name}
-                className={`nav-item ${scope === p.id && !favoritesOnly ? 'active' : ''}`}
-                aria-current={scope === p.id && !favoritesOnly ? 'page' : undefined}
+                className={`nav-item ${pageScope === p.id && !favoritesOnly ? 'active' : ''}`}
+                aria-current={pageScope === p.id && !favoritesOnly ? 'page' : undefined}
                 onClick={() => changePlatform(p.id)}
               >
                 <BrandIcon name={p.icon} size={17} />
                 <span>{p.name}</span>
-                {scope === p.id && <span className="nav-active-dot" />}
+                {pageScope === p.id && <span className="nav-active-dot" />}
               </button>
             ))}
           </nav>
@@ -568,7 +578,7 @@ export default function App() {
       <div className="workspace" inert={isMobile && mobileMenu}>
         {isTagSummary ? (
           <BilibiliCountsPage
-            platform={scope}
+            platform={pageScope}
             operators={operators}
             includeCollaborations={includeCollaborations}
             onIncludeCollaborationsChange={setIncludeCollaborations}
@@ -1081,7 +1091,7 @@ export default function App() {
       </div>
       {dataOpen &&
         (isTagSummary ? (
-          <BilibiliCountInfo platform={scope} onClose={() => setDataOpen(false)} />
+          <BilibiliCountInfo platform={pageScope} onClose={() => setDataOpen(false)} />
         ) : (
           <DataPanel
             operators={operators}

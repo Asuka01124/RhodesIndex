@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { PenLine, X } from 'lucide-react';
+import { PenLine, Trees, X } from 'lucide-react';
 import {
   siPixiv,
   siBilibili,
@@ -27,6 +27,7 @@ const brands = {
 };
 
 export function BrandIcon({ name, size = 18 }: { name: string; size?: number }) {
+  if (name === 'skland') return <Trees size={size} strokeWidth={1.6} aria-hidden="true" />;
   const brand = brands[name as keyof typeof brands];
   if (!brand) return <PenLine size={size} strokeWidth={1.6} aria-hidden="true" />;
   return (

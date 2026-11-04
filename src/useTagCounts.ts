@@ -4,6 +4,7 @@ import { validateLofterCounts } from './lofterCounts';
 import { validateDouyinCounts } from './douyinCounts';
 import { validateXiaohongshuCounts } from './xiaohongshuCounts';
 import { validateWeiboCounts } from './weiboCounts';
+import { validateSklandCounts } from './sklandCounts';
 import { createSnapshotResource } from './snapshotResource';
 
 const REFRESH_INTERVAL = 5000;
@@ -43,6 +44,16 @@ const tagResources = {
   xiaohongshu: makeTagResource('xiaohongshu', validateXiaohongshuCounts),
   weibo: makeTagResource('weibo', validateWeiboCounts),
 };
+
+const sklandResource = createSnapshotResource(async () => {
+  const response = await fetch('/api/skland/tag-counts', {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(10000),
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error('暂时无法读取森空岛的本地话题快照。');
+  return validateSklandCounts(await response.json());
+});
 
 const subscribeDisabled = () => () => {};
 
@@ -93,4 +104,8 @@ export function useXiaohongshuTopicCounts(enabled = true) {
 
 export function useWeiboTagCounts(enabled = true) {
   return useTagSnapshot(tagResources.weibo, enabled);
+}
+
+export function useSklandTagCounts(enabled = true) {
+  return useTagSnapshot(sklandResource, enabled);
 }

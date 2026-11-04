@@ -95,6 +95,10 @@ export function localCollectorPlugin(): Plugin {
             const counts = read(path.join(local, 'weibo/topic-counts.json'), null);
             return counts ? send(200, counts) : send(404, { error: '尚未采集微博话题统计。' });
           }
+          if (req.method === 'GET' && route === '/api/skland/tag-counts') {
+            const counts = read(path.join(local, 'skland/topic-counts.json'), null);
+            return counts ? send(200, counts) : send(404, { error: '尚未采集森空岛话题统计。' });
+          }
           if (
             req.method === 'GET' &&
             (route === '/api/live-data' || route === '/data/live-heat.json')
