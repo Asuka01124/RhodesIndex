@@ -5,9 +5,17 @@ import type { LofterTagDataset } from './types';
 import { validateLofterCounts } from './lofterCounts';
 import type { DouyinTopicDataset } from './types';
 import { validateDouyinCounts } from './douyinCounts';
+import { validateXiaohongshuCounts } from './xiaohongshuCounts';
+
+const SNAPSHOT_LABELS = {
+  bilibili: 'B站搜索结果数',
+  lofter: 'LOFTER标签统计',
+  douyin: '抖音话题播放量',
+  xiaohongshu: '小红书话题浏览量',
+};
 
 function useTagSnapshot<T>(
-  platform: 'bilibili' | 'lofter' | 'douyin',
+  platform: keyof typeof SNAPSHOT_LABELS,
   validate: (value: unknown) => T,
   enabled: boolean,
 ) {
@@ -34,9 +42,7 @@ function useTagSnapshot<T>(
           }
         }
         if (!next)
-          throw new Error(
-            `暂时无法读取${platform === 'lofter' ? 'LOFTER标签统计' : platform === 'douyin' ? '抖音话题播放量' : 'B站搜索结果数'}，请检查本地采集快照。`,
-          );
+          throw new Error(`暂时无法读取${SNAPSHOT_LABELS[platform]}，请检查本地采集快照。`);
         if (!controller.signal.aborted) {
           setData(next);
           setError('');
@@ -71,4 +77,8 @@ export function useLofterTagCounts(enabled = true) {
 
 export function useDouyinTopicCounts(enabled = true) {
   return useTagSnapshot<DouyinTopicDataset>('douyin', validateDouyinCounts, enabled);
+}
+
+export function useXiaohongshuTopicCounts(enabled = true) {
+  return useTagSnapshot('xiaohongshu', validateXiaohongshuCounts, enabled);
 }

@@ -122,7 +122,9 @@ export default function App() {
   const [dataOpen, setDataOpen] = useState(false);
   const [imported, setImported] = useState<HeatDataset | null>(null);
   const [sourceMode, setSourceMode] = useState<DataMode>('collected');
-  const collection = useLiveData(scope !== 'bilibili' && scope !== 'lofter' && scope !== 'douyin');
+  const isTagSummary =
+    scope === 'bilibili' || scope === 'lofter' || scope === 'douyin' || scope === 'xiaohongshu';
+  const collection = useLiveData(!isTagSummary);
   const [detail, setDetail] = useState<Operator | null>(null);
   const [toast, setToast] = useState('');
   const [tooltip, setTooltip] = useState<{
@@ -244,24 +246,16 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams();
     if (scope !== 'all') params.set('platform', scope);
-    if (scope !== 'bilibili' && scope !== 'lofter' && scope !== 'douyin' && metric !== 'likes')
-      params.set('metric', metric);
-    if (scope !== 'bilibili' && scope !== 'lofter' && scope !== 'douyin' && view !== 'bars')
-      params.set('view', view);
+    if (!isTagSummary && metric !== 'likes') params.set('metric', metric);
+    if (!isTagSummary && view !== 'bars') params.set('view', view);
     if (query) params.set('q', query);
-    if (
-      scope !== 'bilibili' &&
-      scope !== 'lofter' &&
-      scope !== 'douyin' &&
-      years.length !== YEARS.length
-    )
-      params.set('years', years.join(','));
+    if (!isTagSummary && years.length !== YEARS.length) params.set('years', years.join(','));
     window.history.replaceState(
       null,
       '',
       `${window.location.pathname}${params.size ? `?${params}` : ''}`,
     );
-  }, [scope, metric, view, query, years]);
+  }, [scope, isTagSummary, metric, view, query, years]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const tag = (event.target as HTMLElement).tagName;
@@ -569,7 +563,7 @@ export default function App() {
       </aside>
 
       <div className="workspace" inert={isMobile && mobileMenu}>
-        {scope === 'bilibili' || scope === 'lofter' || scope === 'douyin' ? (
+        {isTagSummary ? (
           <BilibiliCountsPage
             platform={scope}
             operators={operators}
@@ -879,11 +873,7 @@ export default function App() {
                   <div className="empty-state">
                     <Database size={30} strokeWidth={1.2} aria-hidden="true" />
                     <h3>当前范围还没有{metricLabel}数据</h3>
-                    <p>
-                      {isCollected && scope === 'xiaohongshu' && metric === 'views'
-                        ? '小红书公开笔记页未取得可核验的观看量，保留为空，不计为 0。'
-                        : '未提供的指标保留为空，不会当作 0 参与排名。'}
-                    </p>
+                    <p>未提供的指标保留为空，不会当作 0 参与排名。</p>
                     <button className="outline-button" onClick={() => setDataOpen(true)}>
                       查看数据与来源
                       <ArrowRight size={14} aria-hidden="true" />
@@ -1083,7 +1073,7 @@ export default function App() {
         )}
       </div>
       {dataOpen &&
-        (scope === 'bilibili' || scope === 'lofter' || scope === 'douyin' ? (
+        (isTagSummary ? (
           <BilibiliCountInfo platform={scope} onClose={() => setDataOpen(false)} />
         ) : (
           <DataPanel
@@ -1132,7 +1122,7 @@ export default function App() {
         )}
       </div>
       <span className="sr-only" role="status" aria-live="polite">
-        {operators.length && scope !== 'bilibili' && scope !== 'lofter' && scope !== 'douyin'
+        {operators.length && !isTagSummary
           ? `当前显示${platformName}，${metricLabel}，${view === 'bars' ? '条形图' : '热力图'}，筛选结果 ${ranked.length} 位干员。`
           : ''}
       </span>

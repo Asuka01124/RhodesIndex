@@ -20,7 +20,12 @@ import { compactNumber, csvEscape, EMPTY_FILTERS, filterCount, YEARS } from './d
 import { BrandIcon, downloadFile, Modal, Segmented } from './ui';
 import { FilterPanel } from './Filters';
 import { rankTagCounts } from './tagCounts';
-import { useTagCounts, useLofterTagCounts, useDouyinTopicCounts } from './useTagCounts';
+import {
+  useTagCounts,
+  useLofterTagCounts,
+  useDouyinTopicCounts,
+  useXiaohongshuTopicCounts,
+} from './useTagCounts';
 import { lofterDisplayRows } from './lofterCounts';
 import { douyinDisplayRows, douyinRoster } from './douyinCounts';
 import { CollaborationToggle } from './CollaborationToggle';
@@ -28,19 +33,43 @@ import { collaborationRoster } from './collaborations';
 import { DouyinAmbiguityToggle } from './DouyinAmbiguityToggle';
 import { hideAmbiguousDouyinTopics } from './douyinAmbiguity';
 import { RaritySlider } from './RaritySlider';
+import { XIAOHONGSHU_METHOD, xiaohongshuDisplayRows } from './xiaohongshuCounts';
 
 const dateLabel = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚未取得';
 
 const INITIAL_VISIBLE = 100;
+const PLATFORM_NAMES = {
+  bilibili: '哔哩哔哩',
+  lofter: 'LOFTER',
+  douyin: '抖音',
+  xiaohongshu: '小红书',
+};
+type CountPlatform = keyof typeof PLATFORM_NAMES;
 
 export function BilibiliCountInfo({
   onClose,
   platform = 'bilibili',
 }: {
   onClose: () => void;
-  platform?: 'bilibili' | 'lofter' | 'douyin';
+  platform?: CountPlatform;
 }) {
+  if (platform === 'xiaohongshu') {
+    return (
+      <Modal title="小红书热度规则" onClose={onClose}>
+        <div className="count-method">
+          <h3>角色话题累计浏览量</h3>
+          <p>{XIAOHONGSHU_METHOD}</p>
+          <p>
+            每位角色只统计一个话题。大多数角色直接用本名，比如 #黍、#阿米娅。
+            容易撞名的角色会加「明日方舟」，比如 #明日方舟爱丽丝。
+          </p>
+          <p>阿米娅的三个职业形态共用 #阿米娅。找不到对应话题或浏览量时留空。</p>
+          <p>点击排行数值可查看实际话题、来源和采集时间。</p>
+        </div>
+      </Modal>
+    );
+  }
   const isLofter = platform === 'lofter';
   const isDouyin = platform === 'douyin';
   return (
@@ -103,7 +132,7 @@ export function BilibiliCountsPage({
   onToggleMenu,
   onInfo,
 }: {
-  platform?: 'bilibili' | 'lofter' | 'douyin';
+  platform?: CountPlatform;
   operators: Operator[];
   includeCollaborations: boolean;
   onIncludeCollaborationsChange: (value: boolean) => void;
@@ -127,28 +156,49 @@ export function BilibiliCountsPage({
 }) {
   const isLofter = platform === 'lofter';
   const isDouyin = platform === 'douyin';
-  const platformName = isLofter ? 'LOFTER' : isDouyin ? '抖音' : '哔哩哔哩';
+  const isXiaohongshu = platform === 'xiaohongshu';
+  const platformName = PLATFORM_NAMES[platform];
   const [lofterMetric, setLofterMetric] = useState<'participation' | 'views'>('participation');
   const [hideAmbiguous, setHideAmbiguous] = useState(true);
   const bili = useTagCounts(platform === 'bilibili');
   const lofter = useLofterTagCounts(isLofter);
   const douyin = useDouyinTopicCounts(isDouyin);
-  const { data, loading, error } = isLofter ? lofter : isDouyin ? douyin : bili;
+  const xiaohongshu = useXiaohongshuTopicCounts(isXiaohongshu);
+  const { data, loading, error } = isLofter
+    ? lofter
+    : isDouyin
+      ? douyin
+      : isXiaohongshu
+        ? xiaohongshu
+        : bili;
   const countLabel = isLofter
     ? lofterMetric === 'participation'
       ? '参与数'
       : '浏览量'
     : isDouyin
       ? '话题播放量'
-      : '搜索结果数';
+      : isXiaohongshu
+        ? '话题浏览量'
+        : '搜索结果数';
   const countRecords = useMemo<TagSummaryRow[]>(
     () =>
       isLofter
         ? lofterDisplayRows(lofter.data, lofterMetric)
         : isDouyin
           ? douyinDisplayRows(douyin.data)
-          : (bili.data?.records ?? []),
-    [isLofter, isDouyin, lofter.data, lofterMetric, douyin.data, bili.data],
+          : isXiaohongshu
+            ? xiaohongshuDisplayRows(xiaohongshu.data)
+            : (bili.data?.records ?? []),
+    [
+      isLofter,
+      isDouyin,
+      isXiaohongshu,
+      lofter.data,
+      lofterMetric,
+      douyin.data,
+      xiaohongshu.data,
+      bili.data,
+    ],
   );
   const [sort, setSort] = useState<'asc' | 'desc'>('desc');
   const [showAll, setShowAll] = useState(false);
@@ -165,7 +215,9 @@ export function BilibiliCountsPage({
                 hideAmbiguous,
                 douyin.data?.records,
               )
-            : operators,
+            : isXiaohongshu
+              ? douyinRoster(operators)
+              : operators,
           includeCollaborations,
         ),
         countRecords,
@@ -177,6 +229,7 @@ export function BilibiliCountsPage({
     [
       operators,
       isDouyin,
+      isXiaohongshu,
       hideAmbiguous,
       douyin.data,
       countRecords,
@@ -370,8 +423,8 @@ export function BilibiliCountsPage({
               <h1>
                 {isLofter
                   ? `标签${countLabel}排行`
-                  : isDouyin
-                    ? '话题播放量排行'
+                  : isDouyin || isXiaohongshu
+                    ? `${countLabel}排行`
                     : '组合搜索结果数'}
               </h1>
               <span className="chart-count">{ranked.length}</span>
@@ -394,24 +447,36 @@ export function BilibiliCountsPage({
                   <kbd>/</kbd>
                 )}
               </label>
-              <button
-                className="icon-button export-button"
-                aria-label="导出标签统计 CSV"
-                title="导出标签统计 CSV"
-                onClick={exportCsv}
-                disabled={!data}
-              >
-                {exported ? (
-                  <Check size={16} aria-hidden="true" />
-                ) : (
-                  <ArrowDownToLine size={16} aria-hidden="true" />
-                )}
-              </button>
+              {isXiaohongshu ? (
+                <button
+                  className="icon-button export-button"
+                  aria-label="小红书热度规则"
+                  title="小红书热度规则"
+                  aria-haspopup="dialog"
+                  onClick={onInfo}
+                >
+                  <Info size={16} aria-hidden="true" />
+                </button>
+              ) : (
+                <button
+                  className="icon-button export-button"
+                  aria-label="导出标签统计 CSV"
+                  title="导出标签统计 CSV"
+                  onClick={exportCsv}
+                  disabled={!data}
+                >
+                  {exported ? (
+                    <Check size={16} aria-hidden="true" />
+                  ) : (
+                    <ArrowDownToLine size={16} aria-hidden="true" />
+                  )}
+                </button>
+              )}
             </div>
           </div>
           <div className="chart-options count-options">
             <p className="count-coverage">
-              {isDouyin ? (
+              {isDouyin || isXiaohongshu ? (
                 <span className="summary-tag">同名话题仍影响排名，请自行甄别</span>
               ) : loading && !data ? (
                 '正在读取标签统计…'
@@ -507,7 +572,7 @@ export function BilibiliCountsPage({
                     <button
                       className="row-total count-total"
                       onClick={() => setDetailId(o.id)}
-                      aria-label={`${o.name}${countLabel} ${r?.workCount == null ? '未取得' : isDouyin ? r.workCount.toLocaleString('zh-CN') : (r.displayValue ?? r.workCount.toLocaleString('zh-CN'))}，查看来源`}
+                      aria-label={`${o.name}${countLabel} ${r?.workCount == null ? '未取得' : isDouyin || isXiaohongshu ? r.workCount.toLocaleString('zh-CN') : (r.displayValue ?? r.workCount.toLocaleString('zh-CN'))}，查看来源`}
                     >
                       {r?.workCount == null ? (
                         '未取得'
@@ -549,7 +614,9 @@ export function BilibiliCountsPage({
               ? '平台标签浏览／参与显示值；约数按显示值估计排序，未取得不计为零。'
               : isDouyin
                 ? '同名话题累计播放量；角色归属待核实，可能包含其他内容，不代表作品数。'
-                : '角色名＋明日方舟，联动再加作品名；数量来自组合搜索，不要求打齐标签，不代表全站总量。'}
+                : isXiaohongshu
+                  ? '未取得浏览量的话题保留为空。'
+                  : '角色名＋明日方舟，联动再加作品名；数量来自组合搜索，不要求打齐标签，不代表全站总量。'}
           </span>
           <span>更新至 {dateLabel(data?.metadata.generatedAt)}</span>
         </div>
@@ -585,7 +652,7 @@ function CountDetail({
   onFavorite,
   onClose,
 }: {
-  platform: 'bilibili' | 'lofter' | 'douyin';
+  platform: CountPlatform;
   countLabel: string;
   operator: Operator;
   record: TagSummaryRow | undefined;
@@ -593,9 +660,11 @@ function CountDetail({
   onFavorite: () => void;
   onClose: () => void;
 }) {
+  const isXiaohongshu = platform === 'xiaohongshu';
+  const isTopic = platform === 'douyin' || isXiaohongshu;
   return (
     <Modal
-      title={`${platform === 'lofter' ? 'LOFTER标签统计' : platform === 'douyin' ? '抖音话题统计' : '哔哩哔哩标签统计'}`}
+      title={`${PLATFORM_NAMES[platform]}${isTopic ? '话题' : '标签'}统计`}
       onClose={onClose}
       drawer
     >
@@ -626,25 +695,21 @@ function CountDetail({
         <span>
           {countLabel}
           <span className="summary-tag">
-            {platform === 'lofter'
-              ? '平台累计显示'
-              : platform === 'douyin'
-                ? '话题累计'
-                : '组合搜索'}
+            {platform === 'lofter' ? '平台累计显示' : isTopic ? '话题累计' : '组合搜索'}
           </span>
         </span>
         <strong>
           {r?.workCount == null
             ? '未取得'
-            : `${r.lowerBound ? '≥ ' : r.approximate ? '约 ' : ''}${platform === 'douyin' ? r.workCount.toLocaleString('zh-CN') : (r.displayValue ?? r.workCount.toLocaleString('zh-CN'))}`}
+            : `${r.lowerBound ? '≥ ' : r.approximate ? '约 ' : ''}${isTopic ? r.workCount.toLocaleString('zh-CN') : (r.displayValue ?? r.workCount.toLocaleString('zh-CN'))}`}
         </strong>
         <p>
-          {platform === 'lofter' ? '来源标签' : platform === 'douyin' ? '来源话题' : '干员名称'}：
-          {platform === 'douyin' ? '#' : ''}
-          {r?.nativeTag || o.name}
+          {platform === 'lofter' ? '来源标签' : isTopic ? '来源话题' : '干员名称'}：
+          {isTopic ? '#' : ''}
+          {r?.nativeTag || (isXiaohongshu ? '未取得' : o.name)}
         </p>
         {platform === 'bilibili' && <p>搜索关键词：{r?.query || '尚未取得'}</p>}
-        {platform === 'douyin' && <p>话题 ID：{r?.topicId || '未取得'}</p>}
+        {isTopic && <p>话题 ID：{r?.topicId || '未取得'}</p>}
       </div>
       <dl className="count-detail-meta">
         <div>
@@ -664,7 +729,7 @@ function CountDetail({
           </dd>
         </div>
       </dl>
-      {platform === 'douyin' && r?.sharedOperatorIds && r.sharedOperatorIds.length > 1 && (
+      {isTopic && r?.sharedOperatorIds && r.sharedOperatorIds.length > 1 && (
         <p className="muted">阿米娅各职业形态共用这份话题统计，未重复采集或相加。</p>
       )}
       {platform === 'lofter' && (
@@ -701,7 +766,7 @@ function CountDetail({
           <a href={r.url} target="_blank" rel="noreferrer">
             {platform === 'lofter'
               ? '打开平台标签页'
-              : platform === 'douyin'
+              : isTopic
                 ? '查看平台原始汇总'
                 : '打开对应搜索'}
             <ArrowUpRight size={13} aria-hidden="true" />
@@ -719,7 +784,9 @@ function CountDetail({
           ? '浏览和参与是不同指标；参与不等同于已核验的去重作品数。'
           : platform === 'douyin'
             ? '这是平台同名话题的原生累计播放量 view_count；角色归属尚待核实，可能包含其他内容，不能当作作品量或角色专属热度。'
-            : '数量来自组合关键词搜索，可包含标题或简介命中，并非严格标签交集。未完成分段或触顶时仅展示下限。'}{' '}
+            : isXiaohongshu
+              ? XIAOHONGSHU_METHOD
+              : '数量来自组合关键词搜索，可包含标题或简介命中，并非严格标签交集。未完成分段或触顶时仅展示下限。'}{' '}
         同一作品可能出现在多个干员标签中，不直接相加。
       </p>
     </Modal>

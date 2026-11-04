@@ -78,6 +78,10 @@ export function localCollectorPlugin(): Plugin {
             const counts = read(path.join(local, 'douyin/tag-counts.json'), null);
             return counts ? send(200, counts) : send(404, { error: '尚未导出抖音话题统计。' });
           }
+          if (req.method === 'GET' && route === '/api/xiaohongshu/tag-counts') {
+            const counts = read(path.join(local, 'xiaohongshu/topic-counts.json'), null);
+            return counts ? send(200, counts) : send(404, { error: '尚未采集小红书话题统计。' });
+          }
           if (
             req.method === 'GET' &&
             (route === '/api/live-data' || route === '/data/live-heat.json')
