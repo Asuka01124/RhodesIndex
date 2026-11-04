@@ -12,7 +12,7 @@ import uuid
 from tag_session import LOCAL, ROOT
 
 
-WEBSITE_EXCLUDED_PLATFORMS = {"pixiv"}
+WEBSITE_EXCLUDED_PLATFORMS = {"pixiv", "youtube"}
 
 
 def website_snapshot(data):
