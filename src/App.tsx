@@ -15,7 +15,6 @@ import {
   Grid2X2,
   Heart,
   Info,
-  LayoutGrid,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -33,7 +32,7 @@ import type {
   Metric,
   Operator,
   RankedOperator,
-  Scope,
+  PlatformId,
   ViewMode,
   DataMode,
   WorkObservation,
@@ -44,7 +43,6 @@ import {
   DEFAULT_FILTERS,
   EMPTY_FILTERS,
   filterCount,
-  PLATFORM_IDS,
   rankOperators,
   validateDataset,
   YEARS,
@@ -62,7 +60,9 @@ import { collaborationRoster } from './collaborations';
 import { RaritySlider } from './RaritySlider';
 
 const initialParams = new URLSearchParams(window.location.search);
-const supportedScopes: readonly string[] = ['all', ...PLATFORM_IDS];
+const DEFAULT_PLATFORM = 'bilibili';
+const supportedScopes: readonly string[] = PLATFORMS.map((platform) => platform.id);
+const communityStart = PLATFORMS.findIndex((platform) => platform.id === 'lofter');
 const INITIAL_VISIBLE = 100;
 function readLocal<T>(key: string, fallback: T): T {
   try {
@@ -84,10 +84,10 @@ export default function App() {
   const [operators, setOperators] = useState<Operator[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [scope, setScope] = useState<Scope>(
+  const [scope, setScope] = useState<PlatformId>(
     supportedScopes.includes(initialParams.get('platform') ?? '')
-      ? (initialParams.get('platform') as Scope)
-      : 'all',
+      ? (initialParams.get('platform') as PlatformId)
+      : DEFAULT_PLATFORM,
   );
   const [metric, setMetric] = useState<Metric>(
     initialParams.get('metric') === 'views' ? 'views' : 'likes',
@@ -145,7 +145,7 @@ export default function App() {
   const mobileToggleRef = useRef<HTMLButtonElement>(null);
   const deferredQuery = useDeferredValue(query);
   const activePlatform = PLATFORMS.find((p) => p.id === scope);
-  const platformName = activePlatform?.name ?? '全部平台';
+  const platformName = activePlatform?.name ?? '哔哩哔哩';
   const metricLabel = metric === 'likes' ? '点赞' : '观看量';
   const isDemo = sourceMode === 'demo';
   const isCollected = sourceMode === 'collected';
@@ -186,9 +186,13 @@ export default function App() {
     () => (isDemo ? createDemoRecords(operators) : []),
     [operators, isDemo],
   );
+  const importedRecords = useMemo(
+    () => imported?.records.filter((row) => row.platform !== 'youtube'),
+    [imported],
+  );
   const records =
-    sourceMode === 'imported' && imported
-      ? imported.records
+    sourceMode === 'imported' && importedRecords
+      ? importedRecords
       : isDemo
         ? demoRecords
         : collection.live.records;
@@ -254,7 +258,7 @@ export default function App() {
   ]);
   useEffect(() => {
     const params = new URLSearchParams();
-    if (scope !== 'all') params.set('platform', scope);
+    params.set('platform', scope);
     if (!isTagSummary && metric !== 'likes') params.set('metric', metric);
     if (!isTagSummary && view !== 'bars') params.set('view', view);
     if (query) params.set('q', query);
@@ -337,7 +341,7 @@ export default function App() {
     };
   }, [mobileMenu, isMobile]);
 
-  function changePlatform(value: Scope) {
+  function changePlatform(value: PlatformId) {
     setScope(value);
     setFavoritesOnly(false);
     setMobileMenu(false);
@@ -471,8 +475,8 @@ export default function App() {
         <SidebarHighlight selection={favoritesOnly ? 'favorites' : scope} collapsed={collapsed} />
         <button
           className="brand"
-          aria-label="罗德指数，返回全部平台"
-          onClick={() => changePlatform('all')}
+          aria-label="罗德指数，返回哔哩哔哩"
+          onClick={() => changePlatform(DEFAULT_PLATFORM)}
         >
           <img src="/favicon.svg" width={42} height={42} alt="" />
           <span>
@@ -486,17 +490,7 @@ export default function App() {
         <div className="nav-scroll">
           <p className="nav-label">创作热度</p>
           <nav>
-            <button
-              title="全部平台"
-              className={`nav-item ${scope === 'all' && !favoritesOnly ? 'active' : ''}`}
-              aria-current={scope === 'all' && !favoritesOnly ? 'page' : undefined}
-              onClick={() => changePlatform('all')}
-            >
-              <LayoutGrid size={17} strokeWidth={1.5} aria-hidden="true" />
-              <span>全部平台</span>
-              <small>10</small>
-            </button>
-            {PLATFORMS.slice(0, 7).map((p) => (
+            {PLATFORMS.slice(0, communityStart).map((p) => (
               <button
                 key={p.id}
                 title={p.name}
@@ -510,7 +504,7 @@ export default function App() {
               </button>
             ))}
             <p className="nav-label secondary-label">更多创作社区</p>
-            {PLATFORMS.slice(7).map((p) => (
+            {PLATFORMS.slice(communityStart).map((p) => (
               <button
                 key={p.id}
                 title={p.name}
@@ -1158,7 +1152,7 @@ function OperatorDetail({
 }: {
   operator: Operator;
   records: HeatRecord[];
-  scope: Scope;
+  scope: PlatformId;
   metric: Metric;
   years: number[];
   isDemo: boolean;
@@ -1171,13 +1165,10 @@ function OperatorDetail({
   const row = rankOperators([operator], records, scope, metric, years, EMPTY_FILTERS, '')[0];
   const max = Math.max(1, ...Object.values(row.yearly).filter((v): v is number => v !== null));
   const selectedRecords = records.filter(
-    (r) =>
-      r.operatorId === operator.id &&
-      (scope === 'all' || r.platform === scope) &&
-      years.includes(r.year),
+    (r) => r.operatorId === operator.id && r.platform === scope && years.includes(r.year),
   );
   const urls = [...new Set(selectedRecords.flatMap((r) => r.sourceUrls))];
-  const platforms = scope === 'all' ? PLATFORMS : PLATFORMS.filter((p) => p.id === scope);
+  const platforms = PLATFORMS.filter((p) => p.id === scope);
   return (
     <Modal title="干员观察档案" onClose={onClose} drawer>
       <div className="detail-identity">
@@ -1217,10 +1208,7 @@ function OperatorDetail({
           <span className="summary-tag">{isDemo ? '演示' : isCollected ? '真实样本' : '导入'}</span>
         </span>
         <strong>{row.available ? compactNumber(row.total) : '未提供'}</strong>
-        <p>
-          {scope === 'all' ? '全部平台' : PLATFORMS.find((p) => p.id === scope)?.name} ·
-          按当前选中年份汇总
-        </p>
+        <p>{PLATFORMS.find((p) => p.id === scope)?.name} · 按当前选中年份汇总</p>
       </div>
       <h4 className="detail-section-title">每一年的回响</h4>
       <div className="detail-years">
@@ -1246,7 +1234,7 @@ function OperatorDetail({
             .filter(
               (work) =>
                 work.operatorIds.includes(operator.id) &&
-                (scope === 'all' || work.platform === scope) &&
+                work.platform === scope &&
                 years.includes(
                   Number(
                     new Intl.DateTimeFormat('en-US', {

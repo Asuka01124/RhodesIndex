@@ -7,7 +7,7 @@ import { aggregateWorks } from './aggregate';
 import { atomicJson } from './storage';
 import type { CollectionJob, LiveDataset, PlatformId, Operator } from '../src/types';
 
-const SUPPORTED: PlatformId[] = ['pixiv', 'xiaohongshu', 'youtube', 'bluesky', 'tumblr'];
+const SUPPORTED: PlatformId[] = ['pixiv', 'xiaohongshu', 'bluesky', 'tumblr'];
 export function localCollectorPlugin(): Plugin {
   return {
     name: 'rhodes-http-data',
@@ -24,7 +24,8 @@ export function localCollectorPlugin(): Plugin {
       };
       const snapshot = () => {
         const live = read(path.join(local, 'http-live.json'), null) as LiveDataset | null;
-        const visible = (row: { platform: PlatformId }) => row.platform !== 'pixiv';
+        const visible = (row: { platform: PlatformId }) =>
+          row.platform !== 'pixiv' && row.platform !== 'youtube';
         if (
           live &&
           live.works.every(visible) &&

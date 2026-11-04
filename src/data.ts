@@ -53,14 +53,6 @@ export const PLATFORMS: {
     color: '#222222',
   },
   {
-    id: 'youtube',
-    name: 'YouTube',
-    description: '视频与短片',
-    login: '公开标签页可浏览，完整采集待核验',
-    icon: 'youtube',
-    color: '#d76b65',
-  },
-  {
     id: 'xiaohongshu',
     name: '小红书',
     description: '图文与生活创作',
@@ -134,6 +126,7 @@ export function createDemoRecords(operators: Operator[]): HeatRecord[] {
     const seed = hash(operator.id);
     const weight = spotlights[operator.name] ?? (0.1 + (seed % 1000) / 700) * (operator.rarity / 6);
     for (const [p, platform] of PLATFORM_IDS.entries()) {
+      if (platform === 'youtube') continue;
       for (const year of YEARS) {
         const debuted = Number(operator.releaseDate.slice(0, 4));
         const historicalInterest = year < debuted ? 0.12 : 1;

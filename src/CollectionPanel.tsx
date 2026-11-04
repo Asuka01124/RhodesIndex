@@ -33,7 +33,7 @@ export function CollectionPanel({
   const [message, setMessage] = useState('');
   const [failed, setFailed] = useState(false);
   const running = collection.state?.job?.state === 'running';
-  const supported = collection.state?.supportedPlatforms ?? ['pixiv', 'bilibili', 'youtube'];
+  const supported = collection.state?.supportedPlatforms ?? ['pixiv', 'bilibili'];
   const defaultNames = ['蕾缪安', '能天使', '阿米娅', '凯尔希', '银灰', '斯卡蒂'];
   const selectedIds =
     selection === 'all'
