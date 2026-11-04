@@ -23,7 +23,7 @@ API = "https://zonai.skland.com"
 INDEX = "https://wiki.biligame.com/arknights/森空岛话题简介"
 FIELDS = ("viewNum", "publishNum", "discussionNum")
 MAX_SAFE_INTEGER = 2**53 - 1
-ALIASES = {"PhonoR-0": "PhonoR-O"}
+INDEX_ALIASES = {"PhonoR-0": "PhonoR-O"}
 SHARED_TOPICS = {"阿米娅(医疗)": "阿米娅", "阿米娅(近卫)": "阿米娅"}
 
 
@@ -216,8 +216,8 @@ def verified_topic(client, cache, topic_id, name):
 def collect_operator(client, index, cache, operator):
     row = pending(operator)
     name = operator["name"]
-    lookup = ALIASES.get(name, name)
-    candidates = index.get(normalize(lookup), set())
+    lookup = name
+    candidates = index.get(normalize(INDEX_ALIASES.get(name, name)), set())
     if len(candidates) == 1:
         result = verified_topic(client, cache, next(iter(candidates)), lookup)
         if result:
@@ -298,7 +298,7 @@ def collect(args, workspace, path):
         previous_rows = {row["operatorId"]: row for row in previous["records"]}
         for position, row in enumerate(records):
             old = previous_rows.get(row["operatorId"])
-            if old and old["operatorName"] == row["operatorName"] and old["status"] in ("ok", "unmatched"):
+            if old and old["operatorName"] == row["operatorName"] and old["status"] == "ok":
                 records[position] = old
 
     with requests.Session() as session:
@@ -338,7 +338,7 @@ def collect(args, workspace, path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, default=Path.cwd(), help="罗德指数网站目录")
-    parser.add_argument("--resume", action="store_true", help="继续上次采集，保留成功和已查无匹配的记录")
+    parser.add_argument("--resume", action="store_true", help="保留已成功的记录，重试其他档案")
     parser.add_argument("--interval", type=float, default=0.4, help="请求间隔秒数，最低 0.3 秒")
     args = parser.parse_args()
     if not 0.3 <= args.interval < float("inf"):
