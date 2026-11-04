@@ -4,19 +4,32 @@
 
 ## 文件划分
 
-| 平台     | 独立入口                         | 接口实现                                   |
-| -------- | -------------------------------- | ------------------------------------------ |
-| Pixiv    | `scripts/pixiv_collect.py`       | `scripts/collector_sources/pixiv.py`       |
-| 哔哩哔哩 | `scripts/bilibili_collect.py`    | `scripts/collector_sources/bilibili.py`    |
-| 小红书   | `scripts/xiaohongshu_collect.py` | `scripts/collector_sources/xiaohongshu.py` |
-| YouTube  | `scripts/youtube_collect.py`     | `scripts/collector_sources/youtube.py`     |
-| Bluesky  | `scripts/bluesky_collect.py`     | `scripts/collector_sources/bluesky.py`     |
-| Tumblr   | `scripts/tumblr_collect.py`      | `scripts/collector_sources/tumblr.py`      |
-| LOFTER   | `scripts/lofter_collect.py`      | `scripts/collector_sources/lofter_tags.py` |
+| 平台     | 独立入口                         | 接口实现                                          |
+| -------- | -------------------------------- | ------------------------------------------------- |
+| Pixiv    | `scripts/pixiv_collect.py`       | `scripts/collector_sources/pixiv.py`              |
+| 哔哩哔哩 | `scripts/bilibili_collect.py`    | `scripts/collector_sources/bilibili.py`           |
+| 小红书   | `scripts/xiaohongshu_collect.py` | `scripts/collector_sources/xiaohongshu_topics.py` |
+| YouTube  | `scripts/youtube_collect.py`     | `scripts/collector_sources/youtube.py`            |
+| Bluesky  | `scripts/bluesky_collect.py`     | `scripts/collector_sources/bluesky.py`            |
+| Tumblr   | `scripts/tumblr_collect.py`      | `scripts/collector_sources/tumblr.py`             |
+| LOFTER   | `scripts/lofter_collect.py`      | `scripts/collector_sources/lofter_tags.py`        |
 
-微博、X仍没有作品采集适配器。抖音已接通独立的话题汇总试采，尚未接入逐作品采集或网站。小红书按此前决定继续暂停，不能因为拆分而重新启动。
+微博、X仍没有作品采集适配器。抖音已接通独立的话题汇总试采，尚未接入逐作品采集或网站。
 
 抖音浏览器登录不会自动同步为 HTTP 会话。可在本机交互终端运行 `python -X utf8 scripts/douyin_session.py`，将抖音页面请求中的 Cookie 值隐藏输入并用 Windows DPAPI 加密保存；不要发送到聊天、写入命令参数或日志。也可在用户授权的独立登录窗口内提取该窗口的抖音 Cookie，经仅绑定本机回环的一次性接收器直接加密保存，不落明文状态文件。`python -X utf8 scripts/douyin_session.py --status` 仅显示会话是否存在，不显示凭据；DPAPI必须由同一Windows用户读取。
+
+## 小红书话题浏览量
+
+```powershell
+python -X utf8 scripts/xiaohongshu_collect.py probe --operators 阿米娅,爱丽丝,黍
+python -X utf8 scripts/xiaohongshu_collect.py collect
+python -X utf8 scripts/xiaohongshu_collect.py status
+python -X utf8 scripts/xiaohongshu_collect.py stop
+```
+
+默认精确匹配角色本名；仅 `xiaohongshu_collect.py` 中 `PREFIXED_NAMES` 的角色匹配「明日方舟＋角色名」。阿米娅的三个职业形态共用 `#阿米娅`。候选未命中、同名歧义或缺失指标时留空。每位角色统计一个话题的原生累计浏览量 `view_num`，保留话题 ID、来源及采集时间。小红书排行通过本地接口 `/api/xiaohongshu/tag-counts` 读取快照。
+
+默认单线程，请求间隔至少 3.5 秒。同范围的未完成批次可接续，`--refresh` 新建批次。访问受限时保存断点。快照存于 `.local/xiaohongshu/topic-counts.json`。旧的逐作品入口可用 `works` 子命令访问，例如 `python -X utf8 scripts/xiaohongshu_collect.py works --help`。
 
 ## 抖音话题汇总试采
 
