@@ -2,14 +2,14 @@ import type { HeatRecord, Operator, PlatformId } from './types';
 import { PLATFORM_IDS, YEARS } from './domain';
 
 export const YEAR_COLORS: Record<number, string> = {
-  2019: '#c8c4b3',
-  2020: '#b0baa1',
-  2021: '#87a99e',
-  2022: '#749ca9',
-  2023: '#919db9',
-  2024: '#ad9eb4',
-  2025: '#c8aa89',
-  2026: '#d38863',
+  2019: '#c7c7cc',
+  2020: '#66d4cf',
+  2021: '#6ac4dc',
+  2022: '#4a9eff',
+  2023: '#7d7aff',
+  2024: '#c38ff0',
+  2025: '#ff8fab',
+  2026: '#ff9f45',
 };
 export const PROFESSIONS = ['先锋', '近卫', '重装', '狙击', '术师', '医疗', '辅助', '特种'];
 export const PLATFORMS: {

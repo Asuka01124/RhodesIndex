@@ -1011,7 +1011,7 @@ export default function App() {
                                       backgroundColor:
                                         value === null
                                           ? 'var(--surface-2)'
-                                          : `color-mix(in srgb, #b96e48 ${Math.round(ratio * 86 + 6)}%, var(--surface))`,
+                                          : `color-mix(in srgb, #409cff ${Math.round(ratio * 86 + 6)}%, var(--surface))`,
                                     }}
                                     aria-label={`${row.operator.name}，${year} 年，${value === null ? '未提供数据' : `${value.toLocaleString('zh-CN')} 次${metricLabel}`}`}
                                     onMouseEnter={(event) => showTooltip(event, row, year)}
@@ -1065,7 +1065,7 @@ export default function App() {
                       {[10, 30, 50, 70, 90].map((p) => (
                         <i
                           key={p}
-                          style={{ background: `color-mix(in srgb, #b96e48 ${p}%, #fff)` }}
+                          style={{ background: `color-mix(in srgb, #409cff ${p}%, #fff)` }}
                         />
                       ))}
                     </span>
