@@ -75,6 +75,12 @@ export function localCollectorPlugin(): Plugin {
         if (req.method === 'POST' && req.headers.origin && req.headers.origin !== `http://${host}`)
           return send(403, { error: '不接受其他网站发起的采集请求。' });
         try {
+          if (req.method === 'GET' && route === '/api/pixiv/tag-counts') {
+            const counts = read(path.join(local, 'pixiv/tag-counts.json'), null);
+            return counts
+              ? send(200, counts)
+              : send(404, { error: '尚未导出 Pixiv 已完成干员统计。' });
+          }
           if (req.method === 'GET' && route === '/api/bilibili/tag-counts') {
             const counts = read(path.join(local, 'bilibili/tag-counts.json'), null);
             return counts ? send(200, counts) : send(404, { error: '尚未导出B站标签数量。' });

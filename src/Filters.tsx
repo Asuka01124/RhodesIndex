@@ -5,6 +5,7 @@ import { EMPTY_FILTERS, matchesOperator, YEARS } from './domain';
 import { PROFESSIONS } from './data';
 import { Segmented } from './ui';
 import { collaborationRoster } from './collaborations';
+import { PIXIV_RATINGS, PIXIV_WORK_TYPES } from './pixiv';
 
 export function FilterPanel({
   filters,
@@ -14,6 +15,7 @@ export function FilterPanel({
   onClose,
   showYears = true,
   includeCollaborations = true,
+  showPixivFilters = false,
 }: {
   filters: Filters;
   years: number[];
@@ -22,6 +24,7 @@ export function FilterPanel({
   onClose: () => void;
   showYears?: boolean;
   includeCollaborations?: boolean;
+  showPixivFilters?: boolean;
 }) {
   const [draft, setDraft] = useState<Filters>({ ...filters });
   const [first, setFirst] = useState(years.length ? Math.min(...years) : 2019);
@@ -38,12 +41,12 @@ export function FilterPanel({
   const count = collaborationRoster(operators, includeCollaborations).filter((operator) =>
     matchesOperator(operator, draft),
   ).length;
-  const toggle = (key: 'professions' | 'factions', value: string) =>
+  const toggle = (key: 'professions' | 'factions' | 'workTypes' | 'ratings', value: string) =>
     setDraft((previous) => ({
       ...previous,
-      [key]: previous[key].includes(value)
-        ? previous[key].filter((v) => v !== value)
-        : [...previous[key], value],
+      [key]: (previous[key] ?? []).includes(value)
+        ? (previous[key] ?? []).filter((v) => v !== value)
+        : [...(previous[key] ?? []), value],
     }));
   useEffect(() => {
     ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
@@ -85,6 +88,38 @@ export function FilterPanel({
         </button>
       </div>
       <div className="filter-body">
+        {showPixivFilters &&
+          (
+            [
+              { key: 'workTypes', label: '作品类型', all: '全部类型', options: PIXIV_WORK_TYPES },
+              { key: 'ratings', label: '作品分级', all: '全部分级', options: PIXIV_RATINGS },
+            ] as const
+          ).map(({ key, label, all, options }) => (
+            <fieldset key={key}>
+              <legend>
+                {label} <small>可多选</small>
+              </legend>
+              <div className="filter-chips">
+                <button
+                  className={!draft[key]?.length ? 'active' : ''}
+                  aria-pressed={!draft[key]?.length}
+                  onClick={() => setDraft({ ...draft, [key]: [] })}
+                >
+                  {all}
+                </button>
+                {options.map((value) => (
+                  <button
+                    key={value}
+                    className={draft[key]?.includes(value) ? 'active' : ''}
+                    aria-pressed={draft[key]?.includes(value) ?? false}
+                    onClick={() => toggle(key, value)}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          ))}
         <fieldset>
           <legend>
             干员职业 <small>可多选</small>

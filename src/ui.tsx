@@ -26,6 +26,10 @@ const brands = {
   bluesky: siBluesky,
 };
 
+export function RankingNotice() {
+  return <span className="summary-tag">同名话题仍影响排名，请自行甄别</span>;
+}
+
 export function BrandIcon({ name, size = 18 }: { name: string; size?: number }) {
   if (name === 'skland') return <Trees size={size} strokeWidth={1.6} aria-hidden="true" />;
   const brand = brands[name as keyof typeof brands];

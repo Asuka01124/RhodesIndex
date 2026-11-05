@@ -10,7 +10,7 @@ export type PlatformId =
   | 'tumblr'
   | 'bluesky';
 export type Scope = 'all' | PlatformId;
-export type Metric = 'likes' | 'views';
+export type Metric = 'likes' | 'views' | 'bookmarks' | 'comments';
 export type ViewMode = 'bars' | 'heatmap';
 export type Gender = '女' | '男' | '其他';
 
@@ -36,6 +36,10 @@ export interface HeatRecord {
   year: number;
   likes: number | null;
   views: number | null;
+  bookmarks?: number | null;
+  comments?: number | null;
+  workType?: string;
+  rating?: string;
   sourceUrls: string[];
   observedAt: string;
   workCount?: number;
@@ -119,6 +123,8 @@ export interface Filters {
   factions: string[];
   gender: '全部' | Gender;
   rarityTiers: RarityTier[];
+  workTypes?: string[];
+  ratings?: string[];
 }
 
 export interface RankedOperator {

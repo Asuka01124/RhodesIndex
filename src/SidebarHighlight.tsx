@@ -3,9 +3,13 @@ import { useCallback, useLayoutEffect, useRef } from 'react';
 export function SidebarHighlight({
   selection,
   collapsed,
+  orderKey,
+  dragging,
 }: {
   selection: string;
   collapsed: boolean;
+  orderKey?: string;
+  dragging?: boolean;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLDivElement>(null);
@@ -45,6 +49,10 @@ export function SidebarHighlight({
   }, [measure, selection, collapsed]);
 
   useLayoutEffect(() => {
+    if (!dragging) measure(false);
+  }, [measure, orderKey, dragging]);
+
+  useLayoutEffect(() => {
     const sidebar = layerRef.current?.parentElement;
     if (!sidebar) return;
     let frame = 0;
@@ -68,7 +76,12 @@ export function SidebarHighlight({
   }, [measure]);
 
   return (
-    <div ref={layerRef} className="sidebar-selection-layer" aria-hidden="true">
+    <div
+      ref={layerRef}
+      className="sidebar-selection-layer"
+      data-dragging={dragging ? 'true' : undefined}
+      aria-hidden="true"
+    >
       <div ref={thumbRef} className="sidebar-selection-thumb" />
     </div>
   );

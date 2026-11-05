@@ -6,10 +6,12 @@ import { validateXiaohongshuCounts } from './xiaohongshuCounts';
 import { validateWeiboCounts } from './weiboCounts';
 import { validateSklandCounts } from './sklandCounts';
 import { createSnapshotResource } from './snapshotResource';
+import { validatePixivSummary } from './pixiv';
 
 const REFRESH_INTERVAL = 5000;
 
 const SNAPSHOT_LABELS = {
+  pixiv: 'Pixiv作品统计',
   bilibili: 'B站搜索结果数',
   lofter: 'LOFTER标签统计',
   douyin: '抖音话题播放量',
@@ -38,6 +40,7 @@ function makeTagResource<T>(
 }
 
 const tagResources = {
+  pixiv: makeTagResource('pixiv', validatePixivSummary),
   bilibili: makeTagResource('bilibili', validateTagCounts),
   lofter: makeTagResource('lofter', validateLofterCounts),
   douyin: makeTagResource('douyin', validateDouyinCounts),
@@ -108,4 +111,8 @@ export function useWeiboTagCounts(enabled = true) {
 
 export function useSklandTagCounts(enabled = true) {
   return useTagSnapshot(sklandResource, enabled);
+}
+
+export function usePixivSummary(enabled = true) {
+  return useTagSnapshot(tagResources.pixiv, enabled);
 }

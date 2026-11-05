@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import type { RefObject } from 'react';
+import type { CSSProperties, RefObject } from 'react';
 import {
   ArrowDown,
   ArrowDownToLine,
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import type { Filters, NativeTagCount, Operator, TagSummaryRow } from './types';
 import { compactNumber, csvEscape, EMPTY_FILTERS, filterCount, YEARS } from './domain';
-import { BrandIcon, downloadFile, Modal, Segmented } from './ui';
+import { BrandIcon, downloadFile, Modal, RankingNotice, Segmented } from './ui';
 import { FilterPanel } from './Filters';
 import { rankTagCounts } from './tagCounts';
 import {
@@ -608,14 +608,8 @@ export function BilibiliCountsPage({
                 ) : (
                   '等待本地采集快照'
                 )
-              ) : isDouyin || isXiaohongshu ? (
-                <span className="summary-tag">同名话题仍影响排名，请自行甄别</span>
-              ) : loading && !data ? (
-                '正在读取标签统计…'
-              ) : isWeibo ? (
-                `已取得 ${existing.data?.metadata.availableTags ?? 0} / ${existing.data?.metadata.plannedTags ?? douyinRoster(operators).length} 个话题的${countLabel}`
               ) : (
-                `已取得 ${existing.data?.metadata.availableTags ?? 0} / ${existing.data?.metadata.plannedTags ?? operators.length} 位干员的${isLofter ? '标签统计' : '搜索统计'}`
+                <RankingNotice />
               )}
             </p>
             <button
@@ -631,6 +625,11 @@ export function BilibiliCountsPage({
               {sort === 'desc' ? '降序' : '升序'}
             </button>
           </div>
+          {!isSkland && loading && !data && (
+            <p className="count-message" role="status">
+              正在读取标签统计…
+            </p>
+          )}
           {error && (
             <p className="count-message" role="status">
               {error}
@@ -657,6 +656,16 @@ export function BilibiliCountsPage({
               <h3>{loading ? '正在读取本地快照' : error ? '话题统计读取失败' : '尚未采集'}</h3>
               <p>本地采集快照可用后，这里会显示干员的话题排行。</p>
             </div>
+          ) : !operators.length ? (
+            <div className="empty-state">
+              <div className="loading-bars">
+                <i />
+                <i />
+                <i />
+              </div>
+              <h3>正在整理干员档案</h3>
+              <p>热爱的回响，即将呈现。</p>
+            </div>
           ) : !ranked.length ? (
             <div className="empty-state">
               <Search size={30} aria-hidden="true" />
@@ -681,7 +690,7 @@ export function BilibiliCountsPage({
               </div>
               <div className="bar-table">
                 {rows.map(({ operator: o, record: r }, i) => (
-                  <div className="bar-row" key={o.id}>
+                  <div className="bar-row" key={o.id} style={{ '--row-index': i } as CSSProperties}>
                     <span className={`rank-number ${i < 3 ? 'top-rank' : ''}`}>
                       {r?.workCount === null || !r ? '—' : String(i + 1).padStart(2, '0')}
                     </span>

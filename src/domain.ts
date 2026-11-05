@@ -87,7 +87,7 @@ export function rankOperators(
     if ((scope !== 'all' && record.platform !== scope) || !yearSet.has(record.year)) continue;
     const value = record[metric];
     const row = index.get(record.operatorId);
-    if (!row || value === null) continue;
+    if (!row || value == null) continue;
     row.available = true;
     row.total += value;
     row.yearly[record.year] = (row.yearly[record.year] ?? 0) + value;
@@ -108,8 +108,13 @@ export function compactNumber(value: number): string {
   return Math.round(value).toLocaleString('zh-CN');
 }
 
-export function filterCount(filters: Filters): number {
-  return filters.professions.length + filters.factions.length + Number(filters.gender !== '全部');
+export function filterCount(filters: Filters, includeWorkFilters = false): number {
+  return (
+    filters.professions.length +
+    filters.factions.length +
+    Number(filters.gender !== '全部') +
+    (includeWorkFilters ? (filters.workTypes?.length ?? 0) + (filters.ratings?.length ?? 0) : 0)
+  );
 }
 
 export function validateDataset(input: unknown, operators: Operator[]): HeatDataset {

@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, MouseEvent } from 'react';
+import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import {
   ArrowDown,
   ArrowDownToLine,
@@ -48,11 +48,12 @@ import {
   YEARS,
 } from './domain';
 import { createDemoRecords, PLATFORMS, platformSearch, YEAR_COLORS } from './data';
-import { BrandIcon, downloadFile, Modal, Segmented } from './ui';
+import { BrandIcon, downloadFile, Modal, RankingNotice, Segmented } from './ui';
 import { FilterPanel } from './Filters';
 import { DataPanel } from './DataPanel';
 import { useLiveData } from './useLiveData';
-import { preloadTagSnapshots } from './useTagCounts';
+import { preloadTagSnapshots, usePixivSummary } from './useTagCounts';
+import { filterPixivRecords, PIXIV_METRICS } from './pixiv';
 import { SidebarHighlight } from './SidebarHighlight';
 import { BilibiliCountsPage, BilibiliCountInfo } from './BilibiliCountsPage';
 import { CollaborationToggle } from './CollaborationToggle';
@@ -62,12 +63,17 @@ import { RaritySlider } from './RaritySlider';
 const initialParams = new URLSearchParams(window.location.search);
 type PageScope = PlatformId | 'skland';
 const DEFAULT_PLATFORM = 'bilibili';
-const supportedScopes: readonly string[] = [...PLATFORMS.map((platform) => platform.id), 'skland'];
-const communityStart = PLATFORMS.findIndex((platform) => platform.id === 'lofter');
-const communityPages = [
+const sklandPosition = PLATFORMS.findIndex((platform) => platform.id === 'lofter');
+const navigationPlatforms = [
+  ...PLATFORMS.slice(0, sklandPosition),
   { id: 'skland', name: '森空岛', icon: 'skland' } as const,
-  ...PLATFORMS.slice(communityStart),
+  ...PLATFORMS.slice(sklandPosition),
 ];
+const supportedScopes: readonly string[] = navigationPlatforms.map((platform) => platform.id);
+const defaultPlatformOrder: readonly PageScope[] = navigationPlatforms.map(
+  (platform) => platform.id,
+);
+const NAV_LONG_PRESS_MS = 350;
 const INITIAL_VISIBLE = 100;
 function readLocal<T>(key: string, fallback: T): T {
   try {
@@ -84,20 +90,50 @@ function writeLocal(key: string, value: unknown) {
     /* 界面偏好不影响数据正确性。 */
   }
 }
+function normalizePlatformOrder(stored: unknown): PageScope[] {
+  const valid = Array.isArray(stored)
+    ? stored.filter((id): id is PageScope => typeof id === 'string' && supportedScopes.includes(id))
+    : [];
+  const unique = [...new Set(valid)];
+  for (const id of defaultPlatformOrder) {
+    if (!unique.includes(id)) unique.push(id);
+  }
+  return unique;
+}
 
 export default function App() {
   const [operators, setOperators] = useState<Operator[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [pageScope, setPageScope] = useState<PageScope>(
-    supportedScopes.includes(initialParams.get('platform') ?? '')
-      ? (initialParams.get('platform') as PageScope)
-      : DEFAULT_PLATFORM,
+  const [platformOrder, setPlatformOrder] = useState<PageScope[]>(() =>
+    normalizePlatformOrder(readLocal<unknown>('platformOrder', defaultPlatformOrder)),
   );
+  const orderedPlatforms = useMemo(
+    () =>
+      platformOrder
+        .map((id) => navigationPlatforms.find((platform) => platform.id === id))
+        .filter((platform): platform is (typeof navigationPlatforms)[number] => Boolean(platform)),
+    [platformOrder],
+  );
+  const homePlatform = orderedPlatforms[0]?.id ?? DEFAULT_PLATFORM;
+  const homePlatformName = orderedPlatforms[0]?.name ?? '哔哩哔哩';
+  const [pageScope, setPageScope] = useState<PageScope>(() => {
+    const urlPlatform = initialParams.get('platform') ?? '';
+    if (supportedScopes.includes(urlPlatform)) return urlPlatform as PageScope;
+    return (
+      normalizePlatformOrder(readLocal<unknown>('platformOrder', defaultPlatformOrder))[0] ??
+      DEFAULT_PLATFORM
+    );
+  });
   const scope = pageScope === 'skland' ? DEFAULT_PLATFORM : pageScope;
-  const [metric, setMetric] = useState<Metric>(
+  const [generalMetric, setGeneralMetric] = useState<Metric>(
     initialParams.get('metric') === 'views' ? 'views' : 'likes',
   );
+  const [pixivMetric, setPixivMetric] = useState<Metric>(
+    PIXIV_METRICS.find((option) => option.value === initialParams.get('metric'))?.value ?? 'views',
+  );
+  const metric = scope === 'pixiv' ? pixivMetric : generalMetric;
+  const setMetric = scope === 'pixiv' ? setPixivMetric : setGeneralMetric;
   const [view, setView] = useState<ViewMode>(
     initialParams.get('view') === 'heatmap' ? 'heatmap' : 'bars',
   );
@@ -122,6 +158,8 @@ export default function App() {
     return new Set(Array.isArray(stored) ? stored.filter((x) => typeof x === 'string') : []);
   });
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [pageTransitionId, setPageTransitionId] = useState(0);
+  const [pageEntering, setPageEntering] = useState(true);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 650px)').matches);
   const [collapsed, setCollapsed] = useState(false);
@@ -136,7 +174,8 @@ export default function App() {
     pageScope === 'xiaohongshu' ||
     pageScope === 'weibo' ||
     pageScope === 'skland';
-  const collection = useLiveData(!isTagSummary);
+  const collection = useLiveData(!isTagSummary && scope !== 'pixiv');
+  const pixiv = usePixivSummary(scope === 'pixiv');
   const [detail, setDetail] = useState<Operator | null>(null);
   const [toast, setToast] = useState('');
   const [tooltip, setTooltip] = useState<{
@@ -149,11 +188,24 @@ export default function App() {
   const searchRef = useRef<HTMLInputElement>(null);
   const filterRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
+  const navListRef = useRef<HTMLElement>(null);
   const mobileToggleRef = useRef<HTMLButtonElement>(null);
+  const suppressNavClickRef = useRef(false);
+  const navDragCleanupRef = useRef<(() => void) | null>(null);
+  const [navDrag, setNavDrag] = useState<{
+    id: PageScope;
+    originIndex: number;
+    targetIndex: number;
+    offsetY: number;
+    stepHeight: number;
+  } | null>(null);
   const deferredQuery = useDeferredValue(query);
   const activePlatform = PLATFORMS.find((p) => p.id === scope);
   const platformName = activePlatform?.name ?? '哔哩哔哩';
-  const metricLabel = metric === 'likes' ? '点赞' : '观看量';
+  const metricLabel =
+    metric === 'views' && scope !== 'pixiv'
+      ? '观看量'
+      : PIXIV_METRICS.find((option) => option.value === metric)!.label;
   const isDemo = sourceMode === 'demo';
   const isCollected = sourceMode === 'collected';
   const modeLabel = isDemo ? '演示' : isCollected ? '真实样本' : '导入';
@@ -188,6 +240,12 @@ export default function App() {
   useEffect(() => {
     if (rosterReady) return preloadTagSnapshots();
   }, [rosterReady]);
+  useEffect(() => {
+    if (!rosterReady) return;
+    setPageEntering(true);
+    const timer = window.setTimeout(() => setPageEntering(false), 1100);
+    return () => window.clearTimeout(timer);
+  }, [pageTransitionId, rosterReady]);
 
   const demoRecords = useMemo(
     () => (isDemo ? createDemoRecords(operators) : []),
@@ -197,12 +255,18 @@ export default function App() {
     () => imported?.records.filter((row) => row.platform !== 'youtube'),
     [imported],
   );
-  const records =
+  const sourceRecords =
     sourceMode === 'imported' && importedRecords
       ? importedRecords
       : isDemo
         ? demoRecords
-        : collection.live.records;
+        : scope === 'pixiv'
+          ? (pixiv.data?.records ?? [])
+          : collection.live.records;
+  const records = useMemo(
+    () => (scope === 'pixiv' ? filterPixivRecords(sourceRecords, filters) : sourceRecords),
+    [scope, sourceRecords, filters],
+  );
   const visibleOperators = useMemo(
     () => collaborationRoster(operators, includeCollaborations),
     [operators, includeCollaborations],
@@ -242,7 +306,7 @@ export default function App() {
       Object.values(r.yearly).filter((value): value is number => value !== null),
     ),
   );
-  const activeFilters = filterCount(filters);
+  const activeFilters = filterCount(filters, scope === 'pixiv');
   const hasData = availableRows.length > 0;
   const closeFilters = useCallback(() => {
     setFilterOpen(false);
@@ -265,7 +329,7 @@ export default function App() {
   ]);
   useEffect(() => {
     const params = new URLSearchParams();
-    params.set('platform', pageScope);
+    if (pageScope !== homePlatform) params.set('platform', pageScope);
     if (!isTagSummary && metric !== 'likes') params.set('metric', metric);
     if (!isTagSummary && view !== 'bars') params.set('view', view);
     if (query) params.set('q', query);
@@ -275,7 +339,8 @@ export default function App() {
       '',
       `${window.location.pathname}${params.size ? `?${params}` : ''}`,
     );
-  }, [pageScope, isTagSummary, metric, view, query, years]);
+  }, [pageScope, homePlatform, isTagSummary, metric, view, query, years]);
+  useEffect(() => () => navDragCleanupRef.current?.(), []);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const tag = (event.target as HTMLElement).tagName;
@@ -353,6 +418,138 @@ export default function App() {
     setFavoritesOnly(false);
     setMobileMenu(false);
     setFilterOpen(false);
+    setPageTransitionId((id) => id + 1);
+    setPageEntering(true);
+    window.scrollTo(0, 0);
+  }
+  function startNavPointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    id: PageScope,
+    originIndex: number,
+  ) {
+    if (event.button !== 0) return;
+    navDragCleanupRef.current?.();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const pointerId = event.pointerId;
+    const buttonEl = event.currentTarget;
+    const scrollEl = buttonEl.closest('.nav-scroll');
+    let activeDrag: {
+      originIndex: number;
+      targetIndex: number;
+      stepHeight: number;
+      maxIndex: number;
+    } | null = null;
+
+    const timer = window.setTimeout(() => {
+      const items = navListRef.current
+        ? [...navListRef.current.querySelectorAll<HTMLElement>('.nav-item')]
+        : [];
+      const stepHeight =
+        items.length > 1
+          ? Math.max(
+              36,
+              items[1].getBoundingClientRect().top - items[0].getBoundingClientRect().top,
+            )
+          : (buttonEl.getBoundingClientRect().height || 41) + 3;
+      const maxIndex = Math.max(0, items.length - 1);
+      suppressNavClickRef.current = true;
+      activeDrag = {
+        originIndex,
+        targetIndex: originIndex,
+        stepHeight,
+        maxIndex,
+      };
+      setNavDrag({
+        id,
+        originIndex,
+        targetIndex: originIndex,
+        offsetY: 0,
+        stepHeight,
+      });
+      try {
+        buttonEl.setPointerCapture?.(pointerId);
+      } catch {
+        /* 忽略不支持指针捕获的环境 */
+      }
+      try {
+        navigator.vibrate?.(12);
+      } catch {
+        /* 忽略不支持振动的设备 */
+      }
+    }, NAV_LONG_PRESS_MS);
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
+      if (!activeDrag) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 6) {
+          cleanup();
+        }
+        return;
+      }
+      moveEvent.preventDefault();
+      const rawDeltaY = moveEvent.clientY - startY;
+      const minOffset = -activeDrag.originIndex * activeDrag.stepHeight;
+      const maxOffset = (activeDrag.maxIndex - activeDrag.originIndex) * activeDrag.stepHeight;
+      const offsetY = Math.max(minOffset, Math.min(maxOffset, rawDeltaY));
+      const targetIndex = Math.max(
+        0,
+        Math.min(
+          activeDrag.maxIndex,
+          Math.round(activeDrag.originIndex + offsetY / activeDrag.stepHeight),
+        ),
+      );
+      activeDrag.targetIndex = targetIndex;
+      setNavDrag({
+        id,
+        originIndex: activeDrag.originIndex,
+        targetIndex,
+        offsetY,
+        stepHeight: activeDrag.stepHeight,
+      });
+    };
+
+    const handleEnd = (endEvent: PointerEvent) => {
+      if (endEvent.pointerId !== pointerId) return;
+      if (activeDrag) {
+        const { originIndex: fromIndex, targetIndex: toIndex } = activeDrag;
+        if (fromIndex !== toIndex) {
+          setPlatformOrder((previous) => {
+            const next = [...previous];
+            const [moved] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, moved);
+            writeLocal('platformOrder', next);
+            return next;
+          });
+        }
+        setNavDrag(null);
+        window.setTimeout(() => {
+          suppressNavClickRef.current = false;
+        }, 80);
+      }
+      cleanup();
+    };
+
+    const handleScroll = () => {
+      if (!activeDrag) cleanup();
+    };
+
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleEnd);
+      window.removeEventListener('pointercancel', handleEnd);
+      scrollEl?.removeEventListener('scroll', handleScroll);
+      if (navDragCleanupRef.current === cleanup) {
+        navDragCleanupRef.current = null;
+      }
+    };
+
+    navDragCleanupRef.current = cleanup;
+    window.addEventListener('pointermove', handleMove, { passive: false });
+    window.addEventListener('pointerup', handleEnd);
+    window.addEventListener('pointercancel', handleEnd);
+    scrollEl?.addEventListener('scroll', handleScroll, { passive: true });
   }
   function toggleFavorite(id: string) {
     const next = new Set(favorites);
@@ -475,18 +672,20 @@ export default function App() {
       )}
       <aside
         ref={sidebarRef}
-        className="sidebar"
+        className={`sidebar ${navDrag ? 'is-dragging-nav' : ''}`}
         aria-label="平台导航"
         inert={isMobile && !mobileMenu}
       >
         <SidebarHighlight
           selection={favoritesOnly ? 'favorites' : pageScope}
           collapsed={collapsed}
+          orderKey={platformOrder.join(',')}
+          dragging={Boolean(navDrag)}
         />
         <button
           className="brand"
-          aria-label="罗德指数，返回哔哩哔哩"
-          onClick={() => changePlatform(DEFAULT_PLATFORM)}
+          aria-label={`罗德指数，返回${homePlatformName}`}
+          onClick={() => changePlatform(homePlatform)}
         >
           <img src="/favicon.svg" width={42} height={42} alt="" />
           <span>
@@ -499,34 +698,56 @@ export default function App() {
         <div className="sidebar-divider" />
         <div className="nav-scroll">
           <p className="nav-label">创作热度</p>
-          <nav>
-            {PLATFORMS.slice(0, communityStart).map((p) => (
-              <button
-                key={p.id}
-                title={p.name}
-                className={`nav-item ${pageScope === p.id && !favoritesOnly ? 'active' : ''}`}
-                aria-current={pageScope === p.id && !favoritesOnly ? 'page' : undefined}
-                onClick={() => changePlatform(p.id)}
-              >
-                <BrandIcon name={p.icon} size={17} />
-                <span>{p.name}</span>
-                {pageScope === p.id && <span className="nav-active-dot" />}
-              </button>
-            ))}
-            <p className="nav-label secondary-label">更多创作社区</p>
-            {communityPages.map((p) => (
-              <button
-                key={p.id}
-                title={p.name}
-                className={`nav-item ${pageScope === p.id && !favoritesOnly ? 'active' : ''}`}
-                aria-current={pageScope === p.id && !favoritesOnly ? 'page' : undefined}
-                onClick={() => changePlatform(p.id)}
-              >
-                <BrandIcon name={p.icon} size={17} />
-                <span>{p.name}</span>
-                {pageScope === p.id && <span className="nav-active-dot" />}
-              </button>
-            ))}
+          <nav ref={navListRef}>
+            {orderedPlatforms.map((p, index) => {
+              const isDraggingItem = navDrag?.id === p.id;
+              let shiftY = 0;
+              if (navDrag && !isDraggingItem) {
+                if (
+                  navDrag.originIndex < navDrag.targetIndex &&
+                  index > navDrag.originIndex &&
+                  index <= navDrag.targetIndex
+                ) {
+                  shiftY = -navDrag.stepHeight;
+                } else if (
+                  navDrag.originIndex > navDrag.targetIndex &&
+                  index >= navDrag.targetIndex &&
+                  index < navDrag.originIndex
+                ) {
+                  shiftY = navDrag.stepHeight;
+                }
+              }
+              const itemStyle: CSSProperties | undefined = isDraggingItem
+                ? { transform: `translate3d(0, ${navDrag.offsetY}px, 0) scale(1.03)` }
+                : navDrag
+                  ? { transform: `translate3d(0, ${shiftY}px, 0)` }
+                  : undefined;
+              return (
+                <button
+                  key={p.id}
+                  title={p.name}
+                  style={itemStyle}
+                  className={`nav-item ${pageScope === p.id && !favoritesOnly ? 'active' : ''} ${isDraggingItem ? 'is-dragging' : navDrag ? 'is-shifting' : ''}`}
+                  aria-current={pageScope === p.id && !favoritesOnly ? 'page' : undefined}
+                  onPointerDown={(event) => startNavPointerDown(event, p.id, index)}
+                  onContextMenu={(event) => {
+                    if (navDrag) event.preventDefault();
+                  }}
+                  onClick={(event) => {
+                    if (suppressNavClickRef.current) {
+                      event.preventDefault();
+                      suppressNavClickRef.current = false;
+                      return;
+                    }
+                    changePlatform(p.id);
+                  }}
+                >
+                  <BrandIcon name={p.icon} size={17} />
+                  <span>{p.name}</span>
+                  {pageScope === p.id && <span className="nav-active-dot" />}
+                </button>
+              );
+            })}
           </nav>
         </div>
         <div className="sidebar-bottom">
@@ -537,6 +758,9 @@ export default function App() {
             onClick={() => {
               setFavoritesOnly(!favoritesOnly);
               setMobileMenu(false);
+              setPageTransitionId((id) => id + 1);
+              setPageEntering(true);
+              window.scrollTo(0, 0);
             }}
           >
             <Heart size={17} strokeWidth={1.5} aria-hidden="true" />
@@ -576,521 +800,593 @@ export default function App() {
       </aside>
 
       <div className="workspace" inert={isMobile && mobileMenu}>
-        {isTagSummary ? (
-          <BilibiliCountsPage
-            platform={pageScope}
-            operators={operators}
-            includeCollaborations={includeCollaborations}
-            onIncludeCollaborationsChange={setIncludeCollaborations}
-            query={query}
-            onQueryChange={setQuery}
-            filters={filters}
-            onFiltersChange={setFilters}
-            filterOpen={filterOpen}
-            onFilterOpen={() => setFilterOpen(!filterOpen)}
-            onCloseFilters={closeFilters}
-            favorites={favorites}
-            favoritesOnly={favoritesOnly}
-            onClearFavorites={() => setFavoritesOnly(false)}
-            onFavorite={toggleFavorite}
-            searchRef={searchRef}
-            filterRef={filterRef}
-            mobileToggleRef={mobileToggleRef}
-            mobileMenu={mobileMenu}
-            onToggleMenu={() => setMobileMenu(!mobileMenu)}
-            onInfo={() => setDataOpen(true)}
-          />
-        ) : (
-          <>
-            <header className="topbar">
-              <div className="breadcrumb">
-                <button
-                  ref={mobileToggleRef}
-                  className="icon-button mobile-menu-button"
-                  aria-label="打开平台菜单"
-                  aria-expanded={mobileMenu}
-                  onClick={() => setMobileMenu(!mobileMenu)}
-                >
-                  <Menu size={20} aria-hidden="true" />
-                </button>
-                <RaritySlider
-                  value={filters.rarityTiers}
-                  onChange={(rarityTiers) =>
-                    setFilters((previous) => ({ ...previous, rarityTiers }))
-                  }
-                />
-              </div>
-              <div className="header-controls">
-                <Segmented
-                  label="图表类型"
-                  value={view}
-                  onChange={(value) => {
-                    setView(value);
-                    setTooltip(null);
-                  }}
-                  options={[
-                    {
-                      value: 'bars',
-                      label: '条形图',
-                      icon: <BarChart3 size={14} aria-hidden="true" />,
-                    },
-                    {
-                      value: 'heatmap',
-                      label: '热力图',
-                      icon: <Grid2X2 size={14} aria-hidden="true" />,
-                    },
-                  ]}
-                />
-                <span className="control-divider" />
-                <Segmented
-                  label="热度指标"
-                  value={metric}
-                  onChange={setMetric}
-                  options={[
-                    { value: 'likes', label: '点赞', icon: <Heart size={14} aria-hidden="true" /> },
-                    {
-                      value: 'views',
-                      label: '观看量',
-                      icon: <Play size={14} aria-hidden="true" />,
-                    },
-                  ]}
-                />
-                <div className="quick-filter-controls">
-                  <CollaborationToggle
-                    checked={includeCollaborations}
-                    onChange={setIncludeCollaborations}
-                  />
-                  <div className="filter-anchor">
-                    <button
-                      ref={filterRef}
-                      data-filter-trigger
-                      className={`outline-button filter-trigger ${activeFilters || filterOpen ? 'has-filter' : ''}`}
-                      aria-expanded={filterOpen}
-                      aria-controls="operator-filters"
-                      onClick={() => setFilterOpen(!filterOpen)}
-                    >
-                      <SlidersHorizontal size={15} aria-hidden="true" />
-                      <span>筛选</span>
-                      {activeFilters ? (
-                        <span className="filter-count">{activeFilters}</span>
-                      ) : (
-                        <ChevronDown size={13} aria-hidden="true" />
-                      )}
-                    </button>
-                    {filterOpen && (
-                      <FilterPanel
-                        filters={filters}
-                        includeCollaborations={includeCollaborations}
-                        years={years}
-                        operators={operators}
-                        onClose={closeFilters}
-                        onApply={(nextFilters, nextYears) => {
-                          setFilters(nextFilters);
-                          setYears(nextYears);
-                          closeFilters();
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </header>
-
-            <main id="main-content" className="main-content">
-              <section className="chart-section" aria-label="干员热度图表">
-                <div className="chart-toolbar">
-                  <div className="chart-title">
-                    <span className="chart-title-icon">
-                      {view === 'bars' ? (
-                        <BarChart3 size={17} strokeWidth={1.5} aria-hidden="true" />
-                      ) : (
-                        <Grid2X2 size={17} strokeWidth={1.5} aria-hidden="true" />
-                      )}
-                    </span>
-                    <h1>
-                      {view === 'bars'
-                        ? isCollected
-                          ? '已核验样本排行'
-                          : '干员热度排行'
-                        : isCollected
-                          ? '已采集年度样本'
-                          : '年度热度图谱'}
-                    </h1>
-                    <span className="chart-count">{ranked.length}</span>
-                  </div>
-                  <div className="chart-actions">
-                    <label className="search-box">
-                      <Search size={15} aria-hidden="true" />
-                      <input
-                        ref={searchRef}
-                        aria-label="搜索干员"
-                        placeholder="搜索干员名称、职业…"
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                      />
-                      {query ? (
-                        <button aria-label="清除搜索" onClick={() => setQuery('')}>
-                          <X size={13} aria-hidden="true" />
-                        </button>
-                      ) : (
-                        <kbd>/</kbd>
-                      )}
-                    </label>
-                    <button
-                      className="icon-button export-button"
-                      aria-label="导出当前筛选 CSV"
-                      title="导出当前筛选 CSV"
-                      onClick={exportCsv}
-                      disabled={!operators.length}
-                    >
-                      <ArrowDownToLine size={16} strokeWidth={1.5} aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="chart-options">
-                  <div className="year-legend" aria-label="年份图例，点击切换该年份">
-                    {YEARS.map((year) => (
-                      <button
-                        key={year}
-                        aria-pressed={years.includes(year)}
-                        title={`${years.includes(year) ? '隐藏' : '显示'} ${year} 年`}
-                        className={years.includes(year) ? '' : 'inactive'}
-                        onClick={() =>
-                          setYears((previous) =>
-                            previous.includes(year)
-                              ? previous.filter((y) => y !== year)
-                              : [...previous, year].sort(),
-                          )
-                        }
-                      >
-                        <i style={{ background: YEAR_COLORS[year] }} />
-                        {year}
-                      </button>
-                    ))}
-                  </div>
+        <div
+          key={pageTransitionId}
+          className={`page-transition-stage ${pageEntering ? 'page-entering' : ''}`}
+        >
+          {isTagSummary ? (
+            <BilibiliCountsPage
+              platform={pageScope}
+              operators={operators}
+              includeCollaborations={includeCollaborations}
+              onIncludeCollaborationsChange={setIncludeCollaborations}
+              query={query}
+              onQueryChange={setQuery}
+              filters={filters}
+              onFiltersChange={setFilters}
+              filterOpen={filterOpen}
+              onFilterOpen={() => setFilterOpen(!filterOpen)}
+              onCloseFilters={closeFilters}
+              favorites={favorites}
+              favoritesOnly={favoritesOnly}
+              onClearFavorites={() => setFavoritesOnly(false)}
+              onFavorite={toggleFavorite}
+              searchRef={searchRef}
+              filterRef={filterRef}
+              mobileToggleRef={mobileToggleRef}
+              mobileMenu={mobileMenu}
+              onToggleMenu={() => setMobileMenu(!mobileMenu)}
+              onInfo={() => setDataOpen(true)}
+            />
+          ) : (
+            <>
+              <header className={`topbar ${scope === 'pixiv' ? 'pixiv-topbar' : ''}`}>
+                <div className="breadcrumb">
                   <button
-                    className="sort-button"
-                    onClick={() => setSort(sort === 'desc' ? 'asc' : 'desc')}
+                    ref={mobileToggleRef}
+                    className="icon-button mobile-menu-button"
+                    aria-label="打开平台菜单"
+                    aria-expanded={mobileMenu}
+                    onClick={() => setMobileMenu(!mobileMenu)}
                   >
-                    {sort === 'desc' ? (
-                      <ArrowDown size={12} aria-hidden="true" />
-                    ) : (
-                      <ArrowUp size={12} aria-hidden="true" />
-                    )}
-                    {sort === 'desc' ? '热度降序' : '热度升序'}
+                    <Menu size={20} aria-hidden="true" />
                   </button>
+                  <RaritySlider
+                    value={filters.rarityTiers}
+                    onChange={(rarityTiers) =>
+                      setFilters((previous) => ({ ...previous, rarityTiers }))
+                    }
+                  />
                 </div>
-                {(activeFilters > 0 || favoritesOnly) && (
-                  <div className="active-filter-chips">
-                    {favoritesOnly && (
-                      <button onClick={() => setFavoritesOnly(false)}>
-                        我的关注
-                        <X size={11} aria-hidden="true" />
-                      </button>
+                <div className="header-controls">
+                  <Segmented
+                    label="图表类型"
+                    value={view}
+                    onChange={(value) => {
+                      setView(value);
+                      setTooltip(null);
+                    }}
+                    options={[
+                      {
+                        value: 'bars',
+                        label: '条形图',
+                        icon: <BarChart3 size={14} aria-hidden="true" />,
+                      },
+                      {
+                        value: 'heatmap',
+                        label: '热力图',
+                        icon: <Grid2X2 size={14} aria-hidden="true" />,
+                      },
+                    ]}
+                  />
+                  {scope !== 'pixiv' && (
+                    <>
+                      <span className="control-divider" />
+                      <Segmented
+                        label="热度指标"
+                        value={metric}
+                        onChange={setMetric}
+                        options={[
+                          {
+                            value: 'likes',
+                            label: '点赞',
+                            icon: <Heart size={14} aria-hidden="true" />,
+                          },
+                          {
+                            value: 'views',
+                            label: '观看量',
+                            icon: <Play size={14} aria-hidden="true" />,
+                          },
+                        ]}
+                      />
+                    </>
+                  )}
+                  <div className="quick-filter-controls">
+                    {scope === 'pixiv' && (
+                      <Segmented
+                        label="Pixiv 热度指标"
+                        value={pixivMetric}
+                        onChange={setPixivMetric}
+                        options={PIXIV_METRICS}
+                        className="pixiv-metrics"
+                      />
                     )}
-                    {filters.professions.map((p) => (
+                    <CollaborationToggle
+                      checked={includeCollaborations}
+                      onChange={setIncludeCollaborations}
+                    />
+                    <div className="filter-anchor">
                       <button
-                        key={p}
-                        onClick={() =>
-                          setFilters({
-                            ...filters,
-                            professions: filters.professions.filter((v) => v !== p),
-                          })
-                        }
+                        ref={filterRef}
+                        data-filter-trigger
+                        className={`outline-button filter-trigger ${activeFilters || filterOpen ? 'has-filter' : ''}`}
+                        aria-expanded={filterOpen}
+                        aria-controls="operator-filters"
+                        onClick={() => setFilterOpen(!filterOpen)}
                       >
-                        {p}
-                        <X size={11} aria-hidden="true" />
+                        <SlidersHorizontal size={15} aria-hidden="true" />
+                        <span>筛选</span>
+                        {activeFilters ? (
+                          <span className="filter-count">{activeFilters}</span>
+                        ) : (
+                          <ChevronDown size={13} aria-hidden="true" />
+                        )}
                       </button>
-                    ))}
-                    {filters.factions.map((f) => (
-                      <button
-                        key={f}
-                        onClick={() =>
-                          setFilters({
-                            ...filters,
-                            factions: filters.factions.filter((v) => v !== f),
-                          })
-                        }
-                      >
-                        {f}
-                        <X size={11} aria-hidden="true" />
-                      </button>
-                    ))}
-                    {filters.gender !== '全部' && (
-                      <button onClick={() => setFilters({ ...filters, gender: '全部' })}>
-                        {filters.gender === '其他' ? '其他／未知' : filters.gender}
-                        <X size={11} aria-hidden="true" />
-                      </button>
-                    )}
-                    <button className="clear-filters" onClick={resetAll}>
-                      清除筛选
-                    </button>
-                  </div>
-                )}
-
-                {!operators.length ? (
-                  <div className="empty-state">
-                    {loadError ? (
-                      <>
-                        <Info size={30} aria-hidden="true" />
-                        <h3>档案暂时未能加载</h3>
-                        <p>请检查网络连接，再试一次。</p>
-                        <button
-                          className="outline-button"
-                          onClick={() => setLoadAttempt(loadAttempt + 1)}
-                        >
-                          重新加载
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <div className="loading-bars">
-                          <i />
-                          <i />
-                          <i />
-                        </div>
-                        <h3>正在整理干员档案</h3>
-                        <p>热爱的回响，即将呈现。</p>
-                      </>
-                    )}
-                  </div>
-                ) : !ranked.length ? (
-                  <div className="empty-state">
-                    <Search size={30} strokeWidth={1.2} aria-hidden="true" />
-                    <h3>
-                      {favoritesOnly && !favorites.size
-                        ? '还没有关注的干员'
-                        : '暂时没有找到匹配的干员'}
-                    </h3>
-                    <p>
-                      {favoritesOnly && !favorites.size
-                        ? '打开干员详情，点击“关注干员”即可加入这里。'
-                        : '试试其他名称，或减少一些筛选条件。'}
-                    </p>
-                    <button className="outline-button" onClick={resetAll}>
-                      查看全部干员
-                      <ArrowRight size={14} aria-hidden="true" />
-                    </button>
-                  </div>
-                ) : !years.length ? (
-                  <div className="empty-state">
-                    <CalendarDays size={30} strokeWidth={1.2} aria-hidden="true" />
-                    <h3>先选一个年份吧</h3>
-                    <p>点击上方年份图例，开始查看热度。</p>
-                    <button className="outline-button" onClick={() => setYears(YEARS)}>
-                      显示全部年份
-                    </button>
-                  </div>
-                ) : !hasData ? (
-                  <div className="empty-state">
-                    <Database size={30} strokeWidth={1.2} aria-hidden="true" />
-                    <h3>
-                      {isCollected && scope === 'pixiv'
-                        ? 'Pixiv 数据整理中，暂未接入'
-                        : `当前范围还没有${metricLabel}数据`}
-                    </h3>
-                    <p>未提供的指标保留为空，不会当作 0 参与排名。</p>
-                    <button className="outline-button" onClick={() => setDataOpen(true)}>
-                      查看数据与来源
-                      <ArrowRight size={14} aria-hidden="true" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {view === 'bars' ? (
-                      <div className="bar-chart">
-                        <div className="bar-table-heading">
-                          <span>排名</span>
-                          <span>干员 / 阵营</span>
-                          <span className="axis-labels">
-                            {[0, 0.25, 0.5, 0.75, 1].map((value) => (
-                              <span key={value}>{compactNumber(maxValue * value)}</span>
-                            ))}
-                          </span>
-                          <span className="align-right">累计{metricLabel}</span>
-                        </div>
-                        <div className="chart-rows">
-                          {pageRows.map((row, i) => (
-                            <div
-                              key={row.operator.id}
-                              className="bar-row"
-                              style={{ '--row-index': i } as CSSProperties}
-                            >
-                              <span
-                                className={`rank-number ${row.available && i < 3 ? 'top-rank' : ''}`}
-                              >
-                                {row.available ? String(i + 1).padStart(2, '0') : '—'}
-                              </span>
-                              {operatorButton(row)}
-                              <div className="bar-plot">
-                                {row.available ? (
-                                  <div
-                                    className="stacked-bar"
-                                    style={{
-                                      width: `${(row.total / maxValue) * 100}%`,
-                                      minWidth: row.total > 0 ? 2 : 0,
-                                    }}
-                                  >
-                                    {years
-                                      .filter((year) => (row.yearly[year] ?? 0) > 0)
-                                      .map((year) => (
-                                        <button
-                                          key={year}
-                                          className="bar-segment"
-                                          style={{
-                                            backgroundColor: YEAR_COLORS[year],
-                                            flexGrow: row.yearly[year] ?? 0,
-                                          }}
-                                          aria-label={`${row.operator.name}，${year} 年，${(row.yearly[year] ?? 0).toLocaleString('zh-CN')} 次${metricLabel}`}
-                                          onMouseEnter={(event) => showTooltip(event, row, year)}
-                                          onMouseMove={(event) => showTooltip(event, row, year)}
-                                          onMouseLeave={() => setTooltip(null)}
-                                          onFocus={(event) => {
-                                            const rect =
-                                              event.currentTarget.getBoundingClientRect();
-                                            setTooltip({
-                                              x: Math.max(
-                                                105,
-                                                Math.min(
-                                                  window.innerWidth - 110,
-                                                  rect.x + rect.width / 2,
-                                                ),
-                                              ),
-                                              y: rect.y - 8,
-                                              title: `${row.operator.name} · ${year}`,
-                                              value: `${compactNumber(row.yearly[year] ?? 0)} 次${metricLabel}`,
-                                              color: YEAR_COLORS[year],
-                                            });
-                                          }}
-                                          onBlur={() => setTooltip(null)}
-                                          onClick={() => setDetail(row.operator)}
-                                        />
-                                      ))}
-                                  </div>
-                                ) : (
-                                  <span className="missing-value">未提供</span>
-                                )}
-                              </div>
-                              <button
-                                className="row-total"
-                                aria-label={`${row.operator.name}累计${metricLabel} ${row.available ? row.total.toLocaleString('zh-CN') : '未提供'}，查看详情`}
-                                onClick={() => setDetail(row.operator)}
-                              >
-                                {row.available ? compactNumber(row.total) : '—'}
-                                <ArrowUpRight size={12} aria-hidden="true" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="heatmap-scroll">
-                        <div
-                          className="heatmap"
-                          style={{ '--year-count': years.length } as CSSProperties}
-                        >
-                          <div className="heatmap-heading">
-                            <span>排名</span>
-                            <span>干员 / 阵营</span>
-                            {years.map((year) => (
-                              <span key={year}>{year}</span>
-                            ))}
-                            <span>合计</span>
-                          </div>
-                          {pageRows.map((row, i) => (
-                            <div className="heatmap-row" key={row.operator.id}>
-                              <span className="rank-number">
-                                {row.available ? String(i + 1).padStart(2, '0') : '—'}
-                              </span>
-                              {operatorButton(row)}
-                              {years.map((year) => {
-                                const value = row.yearly[year];
-                                const ratio = value === null ? 0 : Math.sqrt(value / maxHeatValue);
-                                return (
-                                  <button
-                                    className={`heat-cell ${ratio > 0.68 ? 'intense' : ''}`}
-                                    key={year}
-                                    style={{
-                                      backgroundColor:
-                                        value === null
-                                          ? 'var(--surface-2)'
-                                          : `color-mix(in srgb, #409cff ${Math.round(ratio * 86 + 6)}%, var(--surface))`,
-                                    }}
-                                    aria-label={`${row.operator.name}，${year} 年，${value === null ? '未提供数据' : `${value.toLocaleString('zh-CN')} 次${metricLabel}`}`}
-                                    onMouseEnter={(event) => showTooltip(event, row, year)}
-                                    onMouseLeave={() => setTooltip(null)}
-                                    onClick={() => setDetail(row.operator)}
-                                  >
-                                    {value === null ? '—' : compactNumber(value)}
-                                  </button>
-                                );
-                              })}
-                              <button className="row-total" onClick={() => setDetail(row.operator)}>
-                                {row.available ? compactNumber(row.total) : '—'}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <div className="chart-footer">
-                      <span className="pagination-info">
-                        显示 1–{pageRows.length} 位，共 {ranked.length} 位干员
-                      </span>
-                      {ranked.length > INITIAL_VISIBLE && (
-                        <button
-                          className={`expand-toggle ${showAll ? 'expanded' : ''}`}
-                          aria-expanded={showAll}
-                          onClick={() => setShowAll((value) => !value)}
-                        >
-                          {showAll ? '收起，只看前 100 位' : `展开全部 ${ranked.length} 位`}
-                          <ChevronDown size={14} aria-hidden="true" />
-                        </button>
+                      {filterOpen && (
+                        <FilterPanel
+                          filters={filters}
+                          includeCollaborations={includeCollaborations}
+                          showPixivFilters={scope === 'pixiv'}
+                          years={years}
+                          operators={operators}
+                          onClose={closeFilters}
+                          onApply={(nextFilters, nextYears) => {
+                            setFilters(nextFilters);
+                            setYears(nextYears);
+                            closeFilters();
+                          }}
+                        />
                       )}
                     </div>
-                  </>
-                )}
-              </section>
-              <div className="chart-caption">
-                <span>
-                  <Info size={13} strokeWidth={1.5} aria-hidden="true" />
-                  {isDemo
-                    ? '当前为演示数据，不代表实际平台热度。'
-                    : isCollected
-                      ? `真实样本共 ${collection.live.metadata.workCount} 件作品，非全站总量；缺失指标不计为零。`
-                      : '当前为用户导入数据，未混入演示数值。'}
-                  按作品发布年份分组。
-                </span>
-                {view === 'heatmap' && (
-                  <span className="heat-scale">
-                    较少
-                    <span>
-                      {[10, 30, 50, 70, 90].map((p) => (
-                        <i
-                          key={p}
-                          style={{ background: `color-mix(in srgb, #409cff ${p}%, #fff)` }}
+                  </div>
+                </div>
+              </header>
+
+              <main id="main-content" className="main-content">
+                <section className="chart-section" aria-label="干员热度图表">
+                  <div className="chart-toolbar">
+                    <div className="chart-title">
+                      <span className="chart-title-icon">
+                        {view === 'bars' ? (
+                          <BarChart3 size={17} strokeWidth={1.5} aria-hidden="true" />
+                        ) : (
+                          <Grid2X2 size={17} strokeWidth={1.5} aria-hidden="true" />
+                        )}
+                      </span>
+                      <h1>
+                        {view === 'bars'
+                          ? isCollected
+                            ? '已核验样本排行'
+                            : '干员热度排行'
+                          : isCollected
+                            ? '已采集年度样本'
+                            : '年度热度图谱'}
+                      </h1>
+                      <span className="chart-count">{ranked.length}</span>
+                    </div>
+                    <div className="chart-actions">
+                      <label className="search-box">
+                        <Search size={15} aria-hidden="true" />
+                        <input
+                          ref={searchRef}
+                          aria-label="搜索干员"
+                          placeholder="搜索干员名称、职业…"
+                          value={query}
+                          onChange={(event) => setQuery(event.target.value)}
                         />
+                        {query ? (
+                          <button aria-label="清除搜索" onClick={() => setQuery('')}>
+                            <X size={13} aria-hidden="true" />
+                          </button>
+                        ) : (
+                          <kbd>/</kbd>
+                        )}
+                      </label>
+                      <button
+                        className="icon-button export-button"
+                        aria-label={scope === 'pixiv' ? 'Pixiv 统计规则' : '导出当前筛选 CSV'}
+                        title={scope === 'pixiv' ? 'Pixiv 统计规则' : '导出当前筛选 CSV'}
+                        onClick={scope === 'pixiv' ? () => setDataOpen(true) : exportCsv}
+                        disabled={!operators.length}
+                      >
+                        {scope === 'pixiv' ? (
+                          <Info size={16} strokeWidth={1.5} aria-hidden="true" />
+                        ) : (
+                          <ArrowDownToLine size={16} strokeWidth={1.5} aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="chart-options">
+                    <RankingNotice />
+                    <div className="year-legend" aria-label="年份图例，点击切换该年份">
+                      {YEARS.map((year) => (
+                        <button
+                          key={year}
+                          aria-pressed={years.includes(year)}
+                          title={`${years.includes(year) ? '隐藏' : '显示'} ${year} 年`}
+                          className={years.includes(year) ? '' : 'inactive'}
+                          onClick={() =>
+                            setYears((previous) =>
+                              previous.includes(year)
+                                ? previous.filter((y) => y !== year)
+                                : [...previous, year].sort(),
+                            )
+                          }
+                        >
+                          <i style={{ background: YEAR_COLORS[year] }} />
+                          {year}
+                        </button>
                       ))}
-                    </span>
-                    较多
+                    </div>
+                    <button
+                      className="sort-button"
+                      onClick={() => setSort(sort === 'desc' ? 'asc' : 'desc')}
+                    >
+                      {sort === 'desc' ? (
+                        <ArrowDown size={12} aria-hidden="true" />
+                      ) : (
+                        <ArrowUp size={12} aria-hidden="true" />
+                      )}
+                      {sort === 'desc' ? '热度降序' : '热度升序'}
+                    </button>
+                  </div>
+                  {(activeFilters > 0 || favoritesOnly) && (
+                    <div className="active-filter-chips">
+                      {favoritesOnly && (
+                        <button onClick={() => setFavoritesOnly(false)}>
+                          我的关注
+                          <X size={11} aria-hidden="true" />
+                        </button>
+                      )}
+                      {filters.professions.map((p) => (
+                        <button
+                          key={p}
+                          onClick={() =>
+                            setFilters({
+                              ...filters,
+                              professions: filters.professions.filter((v) => v !== p),
+                            })
+                          }
+                        >
+                          {p}
+                          <X size={11} aria-hidden="true" />
+                        </button>
+                      ))}
+                      {filters.factions.map((f) => (
+                        <button
+                          key={f}
+                          onClick={() =>
+                            setFilters({
+                              ...filters,
+                              factions: filters.factions.filter((v) => v !== f),
+                            })
+                          }
+                        >
+                          {f}
+                          <X size={11} aria-hidden="true" />
+                        </button>
+                      ))}
+                      {filters.gender !== '全部' && (
+                        <button onClick={() => setFilters({ ...filters, gender: '全部' })}>
+                          {filters.gender === '其他' ? '其他／未知' : filters.gender}
+                          <X size={11} aria-hidden="true" />
+                        </button>
+                      )}
+                      {scope === 'pixiv' &&
+                        (['workTypes', 'ratings'] as const).flatMap((key) =>
+                          (filters[key] ?? []).map((value) => (
+                            <button
+                              key={`${key}-${value}`}
+                              onClick={() =>
+                                setFilters({
+                                  ...filters,
+                                  [key]: filters[key]?.filter((item) => item !== value),
+                                })
+                              }
+                            >
+                              {value}
+                              <X size={11} aria-hidden="true" />
+                            </button>
+                          )),
+                        )}
+                      <button className="clear-filters" onClick={resetAll}>
+                        清除筛选
+                      </button>
+                    </div>
+                  )}
+
+                  {!operators.length ? (
+                    <div className="empty-state">
+                      {loadError ? (
+                        <>
+                          <Info size={30} aria-hidden="true" />
+                          <h3>档案暂时未能加载</h3>
+                          <p>请检查网络连接，再试一次。</p>
+                          <button
+                            className="outline-button"
+                            onClick={() => setLoadAttempt(loadAttempt + 1)}
+                          >
+                            重新加载
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="loading-bars">
+                            <i />
+                            <i />
+                            <i />
+                          </div>
+                          <h3>正在整理干员档案</h3>
+                          <p>热爱的回响，即将呈现。</p>
+                        </>
+                      )}
+                    </div>
+                  ) : !ranked.length ? (
+                    <div className="empty-state">
+                      <Search size={30} strokeWidth={1.2} aria-hidden="true" />
+                      <h3>
+                        {favoritesOnly && !favorites.size
+                          ? '还没有关注的干员'
+                          : '暂时没有找到匹配的干员'}
+                      </h3>
+                      <p>
+                        {favoritesOnly && !favorites.size
+                          ? '打开干员详情，点击“关注干员”即可加入这里。'
+                          : '试试其他名称，或减少一些筛选条件。'}
+                      </p>
+                      <button className="outline-button" onClick={resetAll}>
+                        查看全部干员
+                        <ArrowRight size={14} aria-hidden="true" />
+                      </button>
+                    </div>
+                  ) : !years.length ? (
+                    <div className="empty-state">
+                      <CalendarDays size={30} strokeWidth={1.2} aria-hidden="true" />
+                      <h3>先选一个年份吧</h3>
+                      <p>点击上方年份图例，开始查看热度。</p>
+                      <button className="outline-button" onClick={() => setYears(YEARS)}>
+                        显示全部年份
+                      </button>
+                    </div>
+                  ) : !hasData ? (
+                    <div className="empty-state">
+                      <Database size={30} strokeWidth={1.2} aria-hidden="true" />
+                      <h3>
+                        {isCollected && scope === 'pixiv' && pixiv.loading
+                          ? '正在读取 Pixiv 统计'
+                          : `当前范围还没有${metricLabel}数据`}
+                      </h3>
+                      <p>
+                        {scope === 'pixiv' && pixiv.error
+                          ? pixiv.error
+                          : '未提供的指标保留为空，不会当作 0 参与排名。'}
+                      </p>
+                      <button className="outline-button" onClick={() => setDataOpen(true)}>
+                        查看数据与来源
+                        <ArrowRight size={14} aria-hidden="true" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {view === 'bars' ? (
+                        <div className="bar-chart">
+                          <div className="bar-table-heading">
+                            <span>排名</span>
+                            <span>干员 / 阵营</span>
+                            <span className="axis-labels">
+                              {[0, 0.25, 0.5, 0.75, 1].map((value) => (
+                                <span key={value}>{compactNumber(maxValue * value)}</span>
+                              ))}
+                            </span>
+                            <span className="align-right">累计{metricLabel}</span>
+                          </div>
+                          <div className="chart-rows">
+                            {pageRows.map((row, i) => (
+                              <div
+                                key={row.operator.id}
+                                className="bar-row"
+                                style={{ '--row-index': i } as CSSProperties}
+                              >
+                                <span
+                                  className={`rank-number ${row.available && i < 3 ? 'top-rank' : ''}`}
+                                >
+                                  {row.available ? String(i + 1).padStart(2, '0') : '—'}
+                                </span>
+                                {operatorButton(row)}
+                                <div className="bar-plot">
+                                  {row.available ? (
+                                    <div
+                                      className="stacked-bar"
+                                      style={{
+                                        width: `${(row.total / maxValue) * 100}%`,
+                                        minWidth: row.total > 0 ? 2 : 0,
+                                      }}
+                                    >
+                                      {years
+                                        .filter((year) => (row.yearly[year] ?? 0) > 0)
+                                        .map((year) => (
+                                          <button
+                                            key={year}
+                                            className="bar-segment"
+                                            style={{
+                                              backgroundColor: YEAR_COLORS[year],
+                                              flexGrow: row.yearly[year] ?? 0,
+                                            }}
+                                            aria-label={`${row.operator.name}，${year} 年，${(row.yearly[year] ?? 0).toLocaleString('zh-CN')} 次${metricLabel}`}
+                                            onMouseEnter={(event) => showTooltip(event, row, year)}
+                                            onMouseMove={(event) => showTooltip(event, row, year)}
+                                            onMouseLeave={() => setTooltip(null)}
+                                            onFocus={(event) => {
+                                              const rect =
+                                                event.currentTarget.getBoundingClientRect();
+                                              setTooltip({
+                                                x: Math.max(
+                                                  105,
+                                                  Math.min(
+                                                    window.innerWidth - 110,
+                                                    rect.x + rect.width / 2,
+                                                  ),
+                                                ),
+                                                y: rect.y - 8,
+                                                title: `${row.operator.name} · ${year}`,
+                                                value: `${compactNumber(row.yearly[year] ?? 0)} 次${metricLabel}`,
+                                                color: YEAR_COLORS[year],
+                                              });
+                                            }}
+                                            onBlur={() => setTooltip(null)}
+                                            onClick={() => setDetail(row.operator)}
+                                          />
+                                        ))}
+                                    </div>
+                                  ) : (
+                                    <span className="missing-value">未提供</span>
+                                  )}
+                                </div>
+                                <button
+                                  className="row-total"
+                                  aria-label={`${row.operator.name}累计${metricLabel} ${row.available ? row.total.toLocaleString('zh-CN') : '未提供'}，查看详情`}
+                                  onClick={() => setDetail(row.operator)}
+                                >
+                                  {row.available ? compactNumber(row.total) : '—'}
+                                  <ArrowUpRight size={12} aria-hidden="true" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="heatmap-scroll">
+                          <div
+                            className="heatmap"
+                            style={{ '--year-count': years.length } as CSSProperties}
+                          >
+                            <div className="heatmap-heading">
+                              <span>排名</span>
+                              <span>干员 / 阵营</span>
+                              {years.map((year) => (
+                                <span key={year}>{year}</span>
+                              ))}
+                              <span>合计</span>
+                            </div>
+                            {pageRows.map((row, i) => (
+                              <div
+                                className="heatmap-row"
+                                key={row.operator.id}
+                                style={{ '--row-index': i } as CSSProperties}
+                              >
+                                <span className="rank-number">
+                                  {row.available ? String(i + 1).padStart(2, '0') : '—'}
+                                </span>
+                                {operatorButton(row)}
+                                {years.map((year) => {
+                                  const value = row.yearly[year];
+                                  const ratio =
+                                    value === null ? 0 : Math.sqrt(value / maxHeatValue);
+                                  return (
+                                    <button
+                                      className={`heat-cell ${ratio > 0.68 ? 'intense' : ''}`}
+                                      key={year}
+                                      style={{
+                                        backgroundColor:
+                                          value === null
+                                            ? 'var(--surface-2)'
+                                            : `color-mix(in srgb, #409cff ${Math.round(ratio * 86 + 6)}%, var(--surface))`,
+                                      }}
+                                      aria-label={`${row.operator.name}，${year} 年，${value === null ? '未提供数据' : `${value.toLocaleString('zh-CN')} 次${metricLabel}`}`}
+                                      onMouseEnter={(event) => showTooltip(event, row, year)}
+                                      onMouseLeave={() => setTooltip(null)}
+                                      onClick={() => setDetail(row.operator)}
+                                    >
+                                      {value === null ? '—' : compactNumber(value)}
+                                    </button>
+                                  );
+                                })}
+                                <button
+                                  className="row-total"
+                                  onClick={() => setDetail(row.operator)}
+                                >
+                                  {row.available ? compactNumber(row.total) : '—'}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="chart-footer">
+                        <span className="pagination-info">
+                          显示 1–{pageRows.length} 位，共 {ranked.length} 位干员
+                        </span>
+                        {ranked.length > INITIAL_VISIBLE && (
+                          <button
+                            className={`expand-toggle ${showAll ? 'expanded' : ''}`}
+                            aria-expanded={showAll}
+                            onClick={() => setShowAll((value) => !value)}
+                          >
+                            {showAll ? '收起，只看前 100 位' : `展开全部 ${ranked.length} 位`}
+                            <ChevronDown size={14} aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </section>
+                <div className="chart-caption">
+                  <span>
+                    <Info size={13} strokeWidth={1.5} aria-hidden="true" />
+                    {isDemo
+                      ? '当前为演示数据，不代表实际平台热度。'
+                      : isCollected
+                        ? scope === 'pixiv'
+                          ? `已接入 ${pixiv.data?.metadata.operatorIds.length ?? 0} 位已完成干员，互动量为采集时累计值。`
+                          : `真实样本共 ${collection.live.metadata.workCount} 件作品，非全站总量；缺失指标不计为零。`
+                        : '当前为用户导入数据，未混入演示数值。'}
+                    按作品发布年份分组。
                   </span>
-                )}
-              </div>
-              <footer className="page-footer">
-                <span>为喜欢的干员，记录每一次回响。</span>
-                <button onClick={() => setDataOpen(true)}>
-                  <CircleHelp size={13} aria-hidden="true" />
-                  统计口径与数据来源
-                  <ArrowUpRight size={12} aria-hidden="true" />
-                </button>
-              </footer>
-            </main>
-          </>
-        )}
+                  {view === 'heatmap' && (
+                    <span className="heat-scale">
+                      较少
+                      <span>
+                        {[10, 30, 50, 70, 90].map((p) => (
+                          <i
+                            key={p}
+                            style={{ background: `color-mix(in srgb, #409cff ${p}%, #fff)` }}
+                          />
+                        ))}
+                      </span>
+                      较多
+                    </span>
+                  )}
+                </div>
+                <footer className="page-footer">
+                  <span>为喜欢的干员，记录每一次回响。</span>
+                  <button onClick={() => setDataOpen(true)}>
+                    <CircleHelp size={13} aria-hidden="true" />
+                    统计口径与数据来源
+                    <ArrowUpRight size={12} aria-hidden="true" />
+                  </button>
+                </footer>
+              </main>
+            </>
+          )}
+        </div>
       </div>
       {dataOpen &&
-        (isTagSummary ? (
+        (scope === 'pixiv' ? (
+          <Modal title="Pixiv 统计规则" onClose={() => setDataOpen(false)}>
+            <div className="count-method">
+              <h3>已完成干员的作品统计</h3>
+              <p>按作品 ID 去重，展示浏览、点赞、收藏和评论。作品类型与分级可以组合筛选。</p>
+              <p>按作品发布年份分组，互动量为采集时累计值。未取得的指标保留为空。</p>
+              <p>收藏和评论若有缺失，仅累计已经取得的数值。</p>
+              <p>只接入标签分页和点赞、浏览量补齐的干员。受限、失败或尚未完成的干员保留为空。</p>
+              <p>全年龄、R-18、R-18G 来自平台原生分级，未返回分级的作品归入“未标注”。</p>
+              <p>每个统计分组保留一条代表来源，完整作品记录保留在采集数据库。</p>
+              <p>同名话题仍影响排名，请自行甄别</p>
+            </div>
+          </Modal>
+        ) : isTagSummary ? (
           <BilibiliCountInfo platform={pageScope} onClose={() => setDataOpen(false)} />
         ) : (
           <DataPanel
@@ -1214,7 +1510,10 @@ function OperatorDetail({
       </button>
       <div className="detail-total">
         <span>
-          累计{metric === 'likes' ? '点赞' : '观看量'}
+          累计
+          {metric === 'views' && scope !== 'pixiv'
+            ? '观看量'
+            : PIXIV_METRICS.find((option) => option.value === metric)!.label}
           <span className="summary-tag">{isDemo ? '演示' : isCollected ? '真实样本' : '导入'}</span>
         </span>
         <strong>{row.available ? compactNumber(row.total) : '未提供'}</strong>
