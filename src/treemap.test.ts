@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildEntries, buildTagCountEntries, squarify } from './treemap.ts';
+import { buildEntries, buildTagCountEntries, squarify, TREEMAP_LIMIT } from './treemap.ts';
 import type { RankedTagCountRow } from './treemap.ts';
 import type { Operator, RankedOperator } from './types.ts';
 
@@ -43,7 +43,7 @@ test('squarify skips zero values and empty containers', () => {
   assert.deepEqual(squarify([{ value: 1 }], 0, 0, 0, 100), []);
 });
 
-test('buildEntries keeps only operators with positive totals and assigns descending ranks', () => {
+test('buildEntries keeps only operators with positive totals, sorts descending, and caps at top 30', () => {
   const entries = buildEntries([
     row('b', '术师', { 2025: 5, 2026: null }),
     row('a', '近卫', { 2025: 10, 2026: 30 }),
@@ -56,6 +56,11 @@ test('buildEntries keeps only operators with positive totals and assigns descend
       ['b', 5, 2],
     ],
   );
+  const many = Array.from({ length: 40 }, (_, i) => row(`op_${i}`, '近卫', { 2026: i + 1 }));
+  const top = buildEntries(many);
+  assert.equal(top.length, TREEMAP_LIMIT);
+  assert.equal(top[0].value, 40);
+  assert.equal(top[top.length - 1].value, 11);
 });
 
 test('buildTagCountEntries preserves approximate/lower-bound labels and drops missing/zero', () => {

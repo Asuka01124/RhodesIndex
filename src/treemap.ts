@@ -86,10 +86,16 @@ export interface TreemapEntry {
   rank: number;
 }
 
-export function buildEntries(rows: readonly RankedOperator[]): TreemapEntry[] {
+export const TREEMAP_LIMIT = 30;
+
+export function buildEntries(
+  rows: readonly RankedOperator[],
+  limit = TREEMAP_LIMIT,
+): TreemapEntry[] {
   return [...rows]
     .filter((row) => row.available && row.total > 0)
     .sort((a, b) => b.total - a.total || a.operator.name.localeCompare(b.operator.name, 'zh-CN'))
+    .slice(0, limit)
     .map((row, index) => ({
       operator: row.operator,
       value: row.total,
@@ -103,7 +109,10 @@ export interface RankedTagCountRow {
   record: Pick<TagSummaryRow, 'workCount' | 'displayValue' | 'approximate' | 'lowerBound'> | null;
 }
 
-export function buildTagCountEntries(rows: readonly RankedTagCountRow[]): TreemapEntry[] {
+export function buildTagCountEntries(
+  rows: readonly RankedTagCountRow[],
+  limit = TREEMAP_LIMIT,
+): TreemapEntry[] {
   return [...rows]
     .filter(
       (
@@ -118,6 +127,7 @@ export function buildTagCountEntries(rows: readonly RankedTagCountRow[]): Treema
         b.record.workCount - a.record.workCount ||
         a.operator.name.localeCompare(b.operator.name, 'zh-CN'),
     )
+    .slice(0, limit)
     .map((row, index) => {
       const r = row.record;
       const prefix = r.lowerBound ? '≥ ' : r.approximate ? '约 ' : '';
