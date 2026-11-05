@@ -272,6 +272,7 @@ export default function App() {
     () => collaborationRoster(operators, includeCollaborations),
     [operators, includeCollaborations],
   );
+  const activeYears = view === 'heatmap' ? YEARS : years;
   const ranked = useMemo(
     () =>
       rankOperators(
@@ -279,7 +280,7 @@ export default function App() {
         records,
         scope,
         metric,
-        years,
+        activeYears,
         filters,
         deferredQuery,
         sort,
@@ -290,7 +291,7 @@ export default function App() {
       records,
       scope,
       metric,
-      years,
+      activeYears,
       filters,
       deferredQuery,
       sort,
@@ -995,37 +996,41 @@ export default function App() {
 
                   <div className="chart-options">
                     <RankingNotice />
-                    <div className="year-legend" aria-label="年份图例，点击切换该年份">
-                      {YEARS.map((year) => (
+                    {view === 'bars' && (
+                      <>
+                        <div className="year-legend" aria-label="年份图例，点击切换该年份">
+                          {YEARS.map((year) => (
+                            <button
+                              key={year}
+                              aria-pressed={years.includes(year)}
+                              title={`${years.includes(year) ? '隐藏' : '显示'} ${year} 年`}
+                              className={years.includes(year) ? '' : 'inactive'}
+                              onClick={() =>
+                                setYears((previous) =>
+                                  previous.includes(year)
+                                    ? previous.filter((y) => y !== year)
+                                    : [...previous, year].sort(),
+                                )
+                              }
+                            >
+                              <i style={{ background: YEAR_COLORS[year] }} />
+                              {year}
+                            </button>
+                          ))}
+                        </div>
                         <button
-                          key={year}
-                          aria-pressed={years.includes(year)}
-                          title={`${years.includes(year) ? '隐藏' : '显示'} ${year} 年`}
-                          className={years.includes(year) ? '' : 'inactive'}
-                          onClick={() =>
-                            setYears((previous) =>
-                              previous.includes(year)
-                                ? previous.filter((y) => y !== year)
-                                : [...previous, year].sort(),
-                            )
-                          }
+                          className="sort-button"
+                          onClick={() => setSort(sort === 'desc' ? 'asc' : 'desc')}
                         >
-                          <i style={{ background: YEAR_COLORS[year] }} />
-                          {year}
+                          {sort === 'desc' ? (
+                            <ArrowDown size={12} aria-hidden="true" />
+                          ) : (
+                            <ArrowUp size={12} aria-hidden="true" />
+                          )}
+                          {sort === 'desc' ? '热度降序' : '热度升序'}
                         </button>
-                      ))}
-                    </div>
-                    <button
-                      className="sort-button"
-                      onClick={() => setSort(sort === 'desc' ? 'asc' : 'desc')}
-                    >
-                      {sort === 'desc' ? (
-                        <ArrowDown size={12} aria-hidden="true" />
-                      ) : (
-                        <ArrowUp size={12} aria-hidden="true" />
-                      )}
-                      {sort === 'desc' ? '热度降序' : '热度升序'}
-                    </button>
+                      </>
+                    )}
                   </div>
                   {(activeFilters > 0 || favoritesOnly) && (
                     <div className="active-filter-chips">
@@ -1136,7 +1141,7 @@ export default function App() {
                         <ArrowRight size={14} aria-hidden="true" />
                       </button>
                     </div>
-                  ) : !years.length ? (
+                  ) : !activeYears.length ? (
                     <div className="empty-state">
                       <CalendarDays size={30} strokeWidth={1.2} aria-hidden="true" />
                       <h3>先选一个年份吧</h3>
@@ -1254,7 +1259,7 @@ export default function App() {
                       ) : (
                         <TreemapHeatmap
                           rows={availableRows}
-                          years={years}
+                          years={YEARS}
                           metricLabel={metricLabel}
                           onSelect={setDetail}
                         />
