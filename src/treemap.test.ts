@@ -4,11 +4,7 @@ import { buildEntries, buildTagCountEntries, squarify, TREEMAP_LIMIT } from './t
 import type { RankedTagCountRow } from './treemap.ts';
 import type { Operator, RankedOperator } from './types.ts';
 
-function row(
-  id: string,
-  profession: string,
-  yearly: Record<number, number | null>,
-): RankedOperator {
+function row(id: string, profession: string, yearly: Record<number, number | null>): RankedOperator {
   const values = Object.values(yearly).filter((v): v is number => v !== null);
   return {
     operator: { id, name: id, profession } as Operator,
@@ -18,23 +14,28 @@ function row(
   };
 }
 
-test('squarify fills the container and keeps areas proportional', () => {
+test('squarify fills the container, keeps monotonic areas, and avoids thin slivers on small cohorts', () => {
   const items = [
-    { value: 6 },
-    { value: 6 },
-    { value: 4 },
-    { value: 3 },
-    { value: 2 },
-    { value: 2 },
-    { value: 1 },
+    { value: 6321 },
+    { value: 2606 },
+    { value: 2276 },
+    { value: 1368 },
+    { value: 1279 },
+    { value: 180 },
   ];
-  const rects = squarify(items, 0, 0, 600, 400);
+  const rects = squarify(items, 0, 0, 1000, 380);
   assert.equal(rects.length, items.length);
   const area = rects.reduce((s, r) => s + r.w * r.h, 0);
-  assert.ok(Math.abs(area - 600 * 400) < 1e-6);
-  for (const r of rects) {
-    assert.ok(Math.abs(r.w * r.h - (r.item.value / 24) * 240000) < 1e-6);
-    assert.ok(r.x >= -1e-9 && r.y >= -1e-9 && r.x + r.w <= 600 + 1e-6 && r.y + r.h <= 400 + 1e-6);
+  assert.ok(Math.abs(area - 1000 * 380) < 1e-6);
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i];
+    assert.ok(r.w >= 90 && r.h >= 90, `tile ${i} too thin: ${r.w}x${r.h}`);
+    assert.ok(
+      r.x >= -1e-9 && r.y >= -1e-9 && r.x + r.w <= 1000 + 1e-6 && r.y + r.h <= 380 + 1e-6,
+    );
+    if (i > 0) {
+      assert.ok(rects[i - 1].w * rects[i - 1].h >= r.w * r.h - 1e-6);
+    }
   }
 });
 

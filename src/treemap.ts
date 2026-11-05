@@ -9,7 +9,10 @@ export interface TreemapRect<T> {
   h: number;
 }
 
-/** Squarified treemap (Bruls et al.). Items must carry a positive `value`. */
+/**
+ * Balanced binary treemap with soft minimum weight floor so small cohorts (e.g. 2–15 items)
+ * never leave a trailing sliver, while preserving strict rank order of tile areas.
+ */
 export function squarify<T extends { value: number }>(
   items: readonly T[],
   x: number,
@@ -17,64 +20,82 @@ export function squarify<T extends { value: number }>(
   w: number,
   h: number,
 ): TreemapRect<T>[] {
-  const out: TreemapRect<T>[] = [];
   const positive = items.filter((item) => item.value > 0);
-  const total = positive.reduce((sum, item) => sum + item.value, 0);
-  if (!total || w <= 0 || h <= 0) return out;
-  const scale = (w * h) / total;
-  const rest = [...positive]
-    .sort((a, b) => b.value - a.value)
-    .map((item) => ({ item, area: item.value * scale }));
-  let row: typeof rest = [];
+  const n = positive.length;
+  if (!n || w <= 0 || h <= 0) return [];
+  const sorted = [...positive].sort((a, b) => b.value - a.value);
+  const maxVal = sorted[0].value;
+  // Soften extreme ratios and ensure every tile gets at least a readable share of area
+  const minFloor = maxVal * (n <= 8 ? 0.14 : n <= 16 ? 0.08 : 0.045);
+  const weights = sorted.map((item) => Math.pow(Math.max(item.value, minFloor), 0.78));
+  const prefix = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) prefix[i + 1] = prefix[i] + weights[i];
 
-  const worst = (candidate: typeof rest, side: number) => {
-    let sum = 0;
-    let max = 0;
-    let min = Infinity;
-    for (const c of candidate) {
-      sum += c.area;
-      max = Math.max(max, c.area);
-      min = Math.min(min, c.area);
+  const out: TreemapRect<T>[] = [];
+  const subdivide = (lo: number, hi: number, rx: number, ry: number, rw: number, rh: number) => {
+    const count = hi - lo;
+    if (count <= 0 || rw <= 0 || rh <= 0) return;
+    if (count === 1) {
+      out.push({ item: sorted[lo], x: rx, y: ry, w: rw, h: rh });
+      return;
     }
-    return Math.max((side * side * max) / (sum * sum), (sum * sum) / (side * side * min));
-  };
-  const layout = (current: typeof rest) => {
-    const sum = current.reduce((s, c) => s + c.area, 0);
-    if (w >= h) {
-      const colWidth = sum / h;
-      let cy = y;
-      for (const c of current) {
-        const ch = c.area / colWidth;
-        out.push({ item: c.item, x, y: cy, w: colWidth, h: ch });
-        cy += ch;
+    const total = prefix[hi] - prefix[lo];
+    if (total <= 0) return;
+
+    // For 2 or 3 items in an elongated box, lay them out in a single strip if that keeps better aspect ratios
+    const horizontal = rw >= rh;
+    const stripAspect = (k: number) => {
+      const share = weights[k] / total;
+      const bw = horizontal ? rw * share : rw;
+      const bh = horizontal ? rh : rh * share;
+      return Math.max(bw / bh, bh / bw);
+    };
+    if (count <= 3) {
+      let worstStrip = 0;
+      for (let k = lo; k < hi; k++) worstStrip = Math.max(worstStrip, stripAspect(k));
+      if (worstStrip <= 2.1) {
+        let pos = horizontal ? rx : ry;
+        for (let k = lo; k < hi; k++) {
+          const share = weights[k] / total;
+          if (horizontal) {
+            const cw = rw * share;
+            out.push({ item: sorted[k], x: pos, y: ry, w: cw, h: rh });
+            pos += cw;
+          } else {
+            const ch = rh * share;
+            out.push({ item: sorted[k], x: rx, y: pos, w: rw, h: ch });
+            pos += ch;
+          }
+        }
+        return;
       }
-      x += colWidth;
-      w -= colWidth;
+    }
+
+    // Choose split point that balances weight closest to 50/50 while avoiding orphan 1-item tail when count >= 4
+    let bestSplit = lo + 1;
+    let bestScore = Infinity;
+    for (let mid = lo + 1; mid < hi; mid++) {
+      const ratio = (prefix[mid] - prefix[lo]) / total;
+      const tailPenalty = count >= 4 && hi - mid === 1 && ratio > 0.72 ? 0.35 : 0;
+      const score = Math.abs(ratio - 0.5) + tailPenalty;
+      if (score < bestScore) {
+        bestScore = score;
+        bestSplit = mid;
+      }
+    }
+    const ratio = (prefix[bestSplit] - prefix[lo]) / total;
+    if (horizontal) {
+      const leftW = rw * ratio;
+      subdivide(lo, bestSplit, rx, ry, leftW, rh);
+      subdivide(bestSplit, hi, rx + leftW, ry, rw - leftW, rh);
     } else {
-      const rowHeight = sum / w;
-      let cx = x;
-      for (const c of current) {
-        const cw = c.area / rowHeight;
-        out.push({ item: c.item, x: cx, y, w: cw, h: rowHeight });
-        cx += cw;
-      }
-      y += rowHeight;
-      h -= rowHeight;
+      const topH = rh * ratio;
+      subdivide(lo, bestSplit, rx, ry, rw, topH);
+      subdivide(bestSplit, hi, rx, ry + topH, rw, rh - topH);
     }
   };
 
-  while (rest.length) {
-    const side = Math.min(w, h);
-    const next = rest[0];
-    if (!row.length || worst([...row, next], side) <= worst(row, side)) {
-      row.push(next);
-      rest.shift();
-    } else {
-      layout(row);
-      row = [];
-    }
-  }
-  if (row.length) layout(row);
+  subdivide(0, n, x, y, w, h);
   return out;
 }
 

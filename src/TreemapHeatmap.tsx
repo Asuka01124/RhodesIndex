@@ -6,7 +6,7 @@ import { buildEntries, squarify } from './treemap';
 import type { TreemapEntry } from './treemap';
 import type { Operator, RankedOperator } from './types';
 
-const GAP = 3;
+const GAP = 4;
 
 interface Tip {
   x: number;
@@ -15,12 +15,24 @@ interface Tip {
 }
 
 function heatFill(ratio: number) {
-  const pct = Math.round(12 + ratio * 82);
+  const pct = Math.round(14 + ratio * 80);
   return {
     bg: `color-mix(in srgb, #0071e3 ${pct}%, #eef4fc)`,
     fg: ratio > 0.52 ? '#ffffff' : '#1d1d1f',
-    sub: ratio > 0.52 ? 'rgb(255 255 255 / 82%)' : '#6e6e73',
+    sub: ratio > 0.52 ? 'rgb(255 255 255 / 84%)' : '#6e6e73',
   };
+}
+
+function containerHeight(width: number, count: number) {
+  const mobile = width < 560;
+  if (count <= 1) return mobile ? 220 : 260;
+  if (count <= 3) return mobile ? 260 : 300;
+  if (count <= 6) return mobile ? 360 : 380;
+  if (count <= 12) return mobile ? 460 : 460;
+  if (count <= 20) return mobile ? 560 : 540;
+  return mobile
+    ? Math.max(620, Math.round(width * 1.75))
+    : Math.min(680, Math.max(520, Math.round(width * 0.54)));
 }
 
 export function TreemapHeatmap({
@@ -36,41 +48,37 @@ export function TreemapHeatmap({
   metricLabel: string;
   onSelect: (operator: Operator) => void;
 }) {
+  const sortedYears = useMemo(() => (years ? [...years].sort((a, b) => a - b) : []), [years]);
+  const entries = useMemo(() => customEntries ?? buildEntries(rows ?? []), [customEntries, rows]);
+  const count = entries.length;
+
   const mapRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [width, setWidth] = useState(0);
   useEffect(() => {
     const el = mapRef.current;
     if (!el) return;
-    const measure = () => {
-      const w = el.clientWidth;
-      const h =
-        w < 560
-          ? Math.max(620, Math.round(w * 1.9))
-          : Math.min(720, Math.max(480, Math.round(w * 0.56)));
-      setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
-    };
+    const measure = () => setWidth(el.clientWidth);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  const sortedYears = useMemo(() => (years ? [...years].sort((a, b) => a - b) : []), [years]);
-  const entries = useMemo(() => customEntries ?? buildEntries(rows ?? []), [customEntries, rows]);
+  const height = width ? containerHeight(width, count) : 360;
   const total = useMemo(() => entries.reduce((s, e) => s + e.value, 0), [entries]);
   const maxValue = useMemo(() => Math.max(1, ...entries.map((e) => e.value)), [entries]);
 
   const tiles = useMemo(
-    () => (size.w && size.h ? squarify(entries, 0, 0, size.w, size.h) : []),
-    [entries, size],
+    () => (width && height ? squarify(entries, 0, 0, width, height) : []),
+    [entries, width, height],
   );
 
   const [tip, setTip] = useState<Tip | null>(null);
   const moveTip = (event: MouseEvent, entry: TreemapEntry) => {
-    const width = 236;
+    const tipW = 236;
     const pad = 14;
     let x = event.clientX + pad;
-    if (x + width > window.innerWidth) x = event.clientX - width - pad;
+    if (x + tipW > window.innerWidth) x = event.clientX - tipW - pad;
     const y = Math.min(event.clientY + pad, window.innerHeight - 210);
     setTip({ x: Math.max(8, x), y: Math.max(8, y), entry });
   };
@@ -80,7 +88,7 @@ export function TreemapHeatmap({
       <div
         ref={mapRef}
         className="treemap-map"
-        style={{ height: size.h || undefined }}
+        style={{ height }}
         onMouseLeave={() => setTip(null)}
       >
         {tiles.map((t) => {
@@ -90,8 +98,9 @@ export function TreemapHeatmap({
           const h = Math.max(0, t.h - GAP);
           const ratio = Math.sqrt(entry.value / maxValue);
           const color = heatFill(ratio);
-          const fs = Math.max(11, Math.min(22, Math.sqrt(w * h) / 6.8));
-          const avatar = Math.min(48, Math.round(fs * 2.15));
+          const minSide = Math.min(w, h);
+          const fs = Math.max(11, Math.min(20, Math.round(minSide * 0.13)));
+          const avatar = Math.max(28, Math.min(64, Math.round(minSide * 0.34)));
           const labelValue = entry.displayValue ?? compactNumber(entry.value);
           return (
             <button
@@ -113,17 +122,20 @@ export function TreemapHeatmap({
               onMouseMove={(event) => moveTip(event, entry)}
               onClick={() => onSelect(op)}
             >
-              {w > 92 && h > 88 ? (
+              {w >= 68 && h >= 68 ? (
                 <>
                   <img src={op.avatar} width={avatar} height={avatar} alt="" loading="lazy" />
                   <span className="tile-name" style={{ fontSize: fs }}>
                     {op.name}
                   </span>
-                  <span className="tile-value" style={{ fontSize: Math.max(11, fs * 0.74) }}>
+                  <span
+                    className="tile-value"
+                    style={{ fontSize: Math.max(11, Math.round(fs * 0.78)) }}
+                  >
                     {labelValue}
                   </span>
                 </>
-              ) : w > 48 && h > 32 ? (
+              ) : w >= 46 && h >= 32 ? (
                 <>
                   <span className="tile-name" style={{ fontSize: Math.min(fs, 14) }}>
                     {op.name}
@@ -132,7 +144,7 @@ export function TreemapHeatmap({
                     {labelValue}
                   </span>
                 </>
-              ) : w > 26 && h > 16 ? (
+              ) : w >= 24 && h >= 16 ? (
                 <span className="tile-name" style={{ fontSize: 10 }}>
                   {op.name.slice(0, Math.max(1, Math.floor(w / 11)))}
                 </span>
