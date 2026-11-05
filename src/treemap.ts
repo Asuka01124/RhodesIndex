@@ -77,81 +77,18 @@ export function squarify<T extends { value: number }>(
   return out;
 }
 
-export type YearChange =
-  | { kind: 'pct'; value: number; from: number; to: number }
-  | { kind: 'new'; from: number; to: number }
-  | { kind: 'na' };
-
 export interface TreemapEntry {
   row: RankedOperator;
   value: number;
-  peakYear: number | null;
-  change: YearChange;
+  rank: number;
 }
 
-/**
- * Compare the latest two selected years. Missing values stay missing:
- * a null previous year with a present latest year is reported as "new",
- * never as an infinite or zero-based growth rate.
- */
-export function yearChange(row: RankedOperator, years: readonly number[]): YearChange {
-  const sorted = [...years].sort((a, b) => a - b);
-  if (sorted.length < 2) return { kind: 'na' };
-  const to = sorted[sorted.length - 1];
-  const from = sorted[sorted.length - 2];
-  const current = row.yearly[to] ?? null;
-  const previous = row.yearly[from] ?? null;
-  if (current === null) return { kind: 'na' };
-  if (previous === null || previous === 0) return { kind: 'new', from, to };
-  return { kind: 'pct', value: current / previous - 1, from, to };
-}
-
-export function peakYear(row: RankedOperator, years: readonly number[]): number | null {
-  let best: number | null = null;
-  let bestValue = -Infinity;
-  for (const year of years) {
-    const value = row.yearly[year];
-    if (value != null && value > bestValue) {
-      bestValue = value;
-      best = year;
-    }
-  }
-  return best;
-}
-
-export function buildEntries(rows: readonly RankedOperator[], years: readonly number[]) {
+export function buildEntries(rows: readonly RankedOperator[]): TreemapEntry[] {
   return rows
     .filter((row) => row.available && row.total > 0)
-    .map<TreemapEntry>((row) => ({
+    .map((row, index) => ({
       row,
       value: row.total,
-      peakYear: peakYear(row, years),
-      change: yearChange(row, years),
+      rank: index + 1,
     }));
-}
-
-export interface TreemapGroup {
-  key: string;
-  value: number;
-  entries: TreemapEntry[];
-}
-
-export function groupEntries(entries: readonly TreemapEntry[], byProfession: boolean) {
-  if (!byProfession) {
-    return [
-      { key: '', value: entries.reduce((s, e) => s + e.value, 0), entries: [...entries] },
-    ] satisfies TreemapGroup[];
-  }
-  const map = new Map<string, TreemapEntry[]>();
-  for (const entry of entries) {
-    const key = entry.row.operator.profession || '未知';
-    const list = map.get(key) ?? [];
-    list.push(entry);
-    map.set(key, list);
-  }
-  return [...map].map<TreemapGroup>(([key, list]) => ({
-    key,
-    value: list.reduce((s, e) => s + e.value, 0),
-    entries: list,
-  }));
 }

@@ -1256,7 +1256,6 @@ export default function App() {
                           rows={availableRows}
                           years={years}
                           metricLabel={metricLabel}
-                          missingCount={ranked.length - availableRows.length}
                           onSelect={setDetail}
                         />
                       )}
@@ -1292,6 +1291,20 @@ export default function App() {
                         : '当前为用户导入数据，未混入演示数值。'}
                     按作品发布年份分组。
                   </span>
+                  {view === 'heatmap' && (
+                    <span className="heat-scale">
+                      较少
+                      <span>
+                        {[15, 35, 55, 75, 94].map((p) => (
+                          <i
+                            key={p}
+                            style={{ background: `color-mix(in srgb, #0071e3 ${p}%, #eef4fc)` }}
+                          />
+                        ))}
+                      </span>
+                      较多
+                    </span>
+                  )}
                 </div>
                 <footer className="page-footer">
                   <span>为喜欢的干员，记录每一次回响。</span>
