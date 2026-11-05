@@ -6,8 +6,10 @@ import {
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
+  BarChart3,
   Check,
   ChevronDown,
+  Grid2X2,
   Heart,
   Info,
   Menu,
@@ -15,11 +17,13 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react';
-import type { Filters, NativeTagCount, Operator, TagSummaryRow } from './types';
+import type { Filters, NativeTagCount, Operator, TagSummaryRow, ViewMode } from './types';
 import { compactNumber, csvEscape, EMPTY_FILTERS, filterCount, YEARS } from './domain';
 import { BrandIcon, downloadFile, Modal, RankingNotice, Segmented } from './ui';
 import { FilterPanel } from './Filters';
 import { rankTagCounts } from './tagCounts';
+import { TreemapHeatmap } from './TreemapHeatmap';
+import { buildTagCountEntries } from './treemap';
 import {
   useTagCounts,
   useLofterTagCounts,
@@ -184,6 +188,8 @@ export function BilibiliCountInfo({
 export function BilibiliCountsPage({
   platform = 'bilibili',
   operators,
+  view,
+  onViewChange,
   includeCollaborations,
   onIncludeCollaborationsChange,
   query,
@@ -206,6 +212,8 @@ export function BilibiliCountsPage({
 }: {
   platform?: CountPlatform;
   operators: Operator[];
+  view: ViewMode;
+  onViewChange: (view: ViewMode) => void;
   includeCollaborations: boolean;
   onIncludeCollaborationsChange: (value: boolean) => void;
   query: string;
@@ -344,6 +352,7 @@ export function BilibiliCountsPage({
   );
   const rows = showAll ? ranked : ranked.slice(0, INITIAL_VISIBLE);
   const max = Math.max(1, ...ranked.map((r) => r.record?.workCount ?? 0));
+  const treemapEntries = useMemo(() => buildTagCountEntries(ranked), [ranked]);
   const detail = operators.find((o) => o.id === detailId);
   const detailRecord = countRecords.find((r) => r.operatorId === detailId);
   const activeFilters = filterCount(filters);
@@ -462,6 +471,23 @@ export function BilibiliCountsPage({
           />
         </div>
         <div className="header-controls">
+          <Segmented
+            label="图表类型"
+            value={view}
+            onChange={onViewChange}
+            options={[
+              {
+                value: 'bars',
+                label: '条形图',
+                icon: <BarChart3 size={14} aria-hidden="true" />,
+              },
+              {
+                value: 'heatmap',
+                label: '热力图',
+                icon: <Grid2X2 size={14} aria-hidden="true" />,
+              },
+            ]}
+          />
           <div className="quick-filter-controls">
             {isLofter && (
               <Segmented
@@ -612,18 +638,20 @@ export function BilibiliCountsPage({
                 <RankingNotice />
               )}
             </p>
-            <button
-              className="sort-button"
-              onClick={() => setSort(sort === 'desc' ? 'asc' : 'desc')}
-            >
-              {sort === 'desc' ? (
-                <ArrowDown size={12} aria-hidden="true" />
-              ) : (
-                <ArrowUp size={12} aria-hidden="true" />
-              )}
-              {countLabel}
-              {sort === 'desc' ? '降序' : '升序'}
-            </button>
+            {view === 'bars' && (
+              <button
+                className="sort-button"
+                onClick={() => setSort(sort === 'desc' ? 'asc' : 'desc')}
+              >
+                {sort === 'desc' ? (
+                  <ArrowDown size={12} aria-hidden="true" />
+                ) : (
+                  <ArrowUp size={12} aria-hidden="true" />
+                )}
+                {countLabel}
+                {sort === 'desc' ? '降序' : '升序'}
+              </button>
+            )}
           </div>
           {!isSkland && loading && !data && (
             <p className="count-message" role="status">
@@ -676,6 +704,20 @@ export function BilibiliCountsPage({
                 <ArrowRight size={14} aria-hidden="true" />
               </button>
             </div>
+          ) : view === 'heatmap' ? (
+            treemapEntries.length ? (
+              <TreemapHeatmap
+                entries={treemapEntries}
+                metricLabel={countLabel}
+                onSelect={(op) => setDetailId(op.id)}
+              />
+            ) : (
+              <div className="empty-state">
+                <Grid2X2 size={30} aria-hidden="true" />
+                <h3>当前范围还没有{countLabel}数据</h3>
+                <p>未提供的指标保留为空，不会当作 0 参与展示。</p>
+              </div>
+            )
           ) : (
             <>
               <div className="bar-table-heading">
@@ -771,7 +813,23 @@ export function BilibiliCountsPage({
                       ? '角色话题的原生统计；万、亿为约数，未取得的指标留空。'
                       : '角色名＋明日方舟，联动再加作品名；数量来自组合搜索，不要求打齐标签，不代表全站总量。'}
           </span>
-          <span>更新至 {dateLabel(data?.metadata.generatedAt)}</span>
+          <span>
+            {view === 'heatmap' && treemapEntries.length > 0 && (
+              <span className="heat-scale" style={{ marginRight: 14 }}>
+                较少
+                <span>
+                  {[15, 35, 55, 75, 94].map((p) => (
+                    <i
+                      key={p}
+                      style={{ background: `color-mix(in srgb, #0071e3 ${p}%, #eef4fc)` }}
+                    />
+                  ))}
+                </span>
+                较多
+              </span>
+            )}
+            更新至 {dateLabel(data?.metadata.generatedAt)}
+          </span>
         </div>
         <footer className="page-footer">
           <span>为喜欢的干员，记录每一次回响。</span>

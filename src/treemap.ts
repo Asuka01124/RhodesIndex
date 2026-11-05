@@ -1,4 +1,5 @@
-import type { RankedOperator } from './types';
+import { compactNumber } from './domain.ts';
+import type { Operator, RankedOperator, TagSummaryRow } from './types.ts';
 
 export interface TreemapRect<T> {
   item: T;
@@ -78,17 +79,54 @@ export function squarify<T extends { value: number }>(
 }
 
 export interface TreemapEntry {
-  row: RankedOperator;
+  operator: Operator;
   value: number;
+  displayValue?: string;
+  yearly?: Record<number, number | null>;
   rank: number;
 }
 
 export function buildEntries(rows: readonly RankedOperator[]): TreemapEntry[] {
-  return rows
+  return [...rows]
     .filter((row) => row.available && row.total > 0)
+    .sort((a, b) => b.total - a.total || a.operator.name.localeCompare(b.operator.name, 'zh-CN'))
     .map((row, index) => ({
-      row,
+      operator: row.operator,
       value: row.total,
+      yearly: row.yearly,
       rank: index + 1,
     }));
+}
+
+export interface RankedTagCountRow {
+  operator: Operator;
+  record: Pick<TagSummaryRow, 'workCount' | 'displayValue' | 'approximate' | 'lowerBound'> | null;
+}
+
+export function buildTagCountEntries(rows: readonly RankedTagCountRow[]): TreemapEntry[] {
+  return [...rows]
+    .filter(
+      (
+        row,
+      ): row is {
+        operator: Operator;
+        record: NonNullable<RankedTagCountRow['record']> & { workCount: number };
+      } => row.record != null && row.record.workCount != null && row.record.workCount > 0,
+    )
+    .sort(
+      (a, b) =>
+        b.record.workCount - a.record.workCount ||
+        a.operator.name.localeCompare(b.operator.name, 'zh-CN'),
+    )
+    .map((row, index) => {
+      const r = row.record;
+      const prefix = r.lowerBound ? '≥ ' : r.approximate ? '约 ' : '';
+      const raw = r.displayValue ?? compactNumber(r.workCount);
+      return {
+        operator: row.operator,
+        value: r.workCount,
+        displayValue: `${prefix}${raw}`,
+        rank: index + 1,
+      };
+    });
 }

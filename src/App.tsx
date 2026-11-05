@@ -327,7 +327,7 @@ export default function App() {
     const params = new URLSearchParams();
     if (pageScope !== homePlatform) params.set('platform', pageScope);
     if (!isTagSummary && metric !== 'likes') params.set('metric', metric);
-    if (!isTagSummary && view !== 'bars') params.set('view', view);
+    if (view !== 'bars') params.set('view', view);
     if (query) params.set('q', query);
     if (!isTagSummary && years.length !== YEARS.length) params.set('years', years.join(','));
     window.history.replaceState(
@@ -804,6 +804,8 @@ export default function App() {
             <BilibiliCountsPage
               platform={pageScope}
               operators={operators}
+              view={view}
+              onViewChange={setView}
               includeCollaborations={includeCollaborations}
               onIncludeCollaborationsChange={setIncludeCollaborations}
               query={query}

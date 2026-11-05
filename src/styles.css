@@ -3578,65 +3578,45 @@ small {
   gap: 6px;
 }
 @media (max-width: 650px) {
-  .bili-count-topbar {
-    min-height: 72px;
-    flex-wrap: nowrap;
-  }
-  .bili-count-topbar .header-controls {
-    width: auto;
-    order: 0;
-  }
   .lofter-tag-topbar,
-  .weibo-topic-topbar {
-    min-height: 128px;
-    flex-wrap: wrap;
-  }
-  .lofter-tag-topbar .breadcrumb,
-  .weibo-topic-topbar .breadcrumb {
-    max-width: 100%;
-  }
-  .lofter-tag-topbar .header-controls,
-  .weibo-topic-topbar .header-controls {
-    width: 100%;
-    order: 1;
-  }
-  .lofter-tag-topbar .quick-filter-controls,
-  .weibo-topic-topbar .quick-filter-controls {
-    position: static;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    width: 100%;
-  }
-  .lofter-tag-topbar .segmented,
-  .weibo-topic-topbar .segmented {
-    width: 100%;
-    max-width: 112px;
-    min-width: 0;
-    justify-self: end;
-  }
-  .lofter-tag-topbar .header-controls .segmented button,
-  .weibo-topic-topbar .header-controls .segmented button {
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-    padding: 0;
-    font-size: var(--font-caption);
-  }
+  .weibo-topic-topbar,
   .douyin-topic-topbar {
     min-height: 128px;
     flex-wrap: wrap;
   }
+  .lofter-tag-topbar .breadcrumb,
+  .weibo-topic-topbar .breadcrumb,
   .douyin-topic-topbar .breadcrumb {
     max-width: 100%;
   }
+  .lofter-tag-topbar .header-controls,
+  .weibo-topic-topbar .header-controls,
   .douyin-topic-topbar .header-controls {
     width: 100%;
     order: 1;
+    flex-wrap: wrap;
   }
+  .lofter-tag-topbar .quick-filter-controls,
+  .weibo-topic-topbar .quick-filter-controls,
   .douyin-topic-topbar .quick-filter-controls {
     position: static;
-    justify-content: flex-end;
+    display: flex;
     width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .lofter-tag-topbar .quick-filter-controls > .segmented,
+  .weibo-topic-topbar .quick-filter-controls > .segmented {
+    flex: 1 1 112px;
+    min-width: 0;
+  }
+  .lofter-tag-topbar .quick-filter-controls > .segmented button,
+  .weibo-topic-topbar .quick-filter-controls > .segmented button {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    padding: 0 6px;
+    font-size: var(--font-caption);
   }
   .bili-count-page .count-total {
     font-size: var(--font-caption);
@@ -3757,11 +3737,13 @@ small {
 .pixiv-metrics button {
   padding-inline: 13px;
 }
-.pixiv-topbar .header-controls > .segmented {
+.pixiv-topbar .header-controls > .segmented,
+.bili-count-topbar .header-controls > .segmented {
   height: 44px;
   min-height: 44px;
 }
-.pixiv-topbar .header-controls > .segmented > button {
+.pixiv-topbar .header-controls > .segmented > button,
+.bili-count-topbar .header-controls > .segmented > button {
   height: 100%;
   min-height: 0;
 }

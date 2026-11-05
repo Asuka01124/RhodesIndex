@@ -25,12 +25,14 @@ function heatFill(ratio: number) {
 
 export function TreemapHeatmap({
   rows,
+  entries: customEntries,
   years,
   metricLabel,
   onSelect,
 }: {
-  rows: RankedOperator[];
-  years: number[];
+  rows?: RankedOperator[];
+  entries?: TreemapEntry[];
+  years?: number[];
   metricLabel: string;
   onSelect: (operator: Operator) => void;
 }) {
@@ -53,8 +55,8 @@ export function TreemapHeatmap({
     return () => observer.disconnect();
   }, []);
 
-  const sortedYears = useMemo(() => [...years].sort((a, b) => a - b), [years]);
-  const entries = useMemo(() => buildEntries(rows), [rows]);
+  const sortedYears = useMemo(() => (years ? [...years].sort((a, b) => a - b) : []), [years]);
+  const entries = useMemo(() => customEntries ?? buildEntries(rows ?? []), [customEntries, rows]);
   const total = useMemo(() => entries.reduce((s, e) => s + e.value, 0), [entries]);
   const maxValue = useMemo(() => Math.max(1, ...entries.map((e) => e.value)), [entries]);
 
@@ -83,13 +85,14 @@ export function TreemapHeatmap({
       >
         {tiles.map((t) => {
           const entry = t.item;
-          const op = entry.row.operator;
+          const op = entry.operator;
           const w = Math.max(0, t.w - GAP);
           const h = Math.max(0, t.h - GAP);
           const ratio = Math.sqrt(entry.value / maxValue);
           const color = heatFill(ratio);
           const fs = Math.max(11, Math.min(22, Math.sqrt(w * h) / 6.8));
           const avatar = Math.min(48, Math.round(fs * 2.15));
+          const labelValue = entry.displayValue ?? compactNumber(entry.value);
           return (
             <button
               key={op.id}
@@ -105,7 +108,7 @@ export function TreemapHeatmap({
                   '--tile-sub': color.sub,
                 } as CSSProperties
               }
-              aria-label={`${op.name}，累计 ${entry.value.toLocaleString('zh-CN')} 次${metricLabel}`}
+              aria-label={`${op.name}，${metricLabel} ${entry.displayValue ?? entry.value.toLocaleString('zh-CN')}`}
               onMouseEnter={(event) => moveTip(event, entry)}
               onMouseMove={(event) => moveTip(event, entry)}
               onClick={() => onSelect(op)}
@@ -117,7 +120,7 @@ export function TreemapHeatmap({
                     {op.name}
                   </span>
                   <span className="tile-value" style={{ fontSize: Math.max(11, fs * 0.74) }}>
-                    {compactNumber(entry.value)}
+                    {labelValue}
                   </span>
                 </>
               ) : w > 48 && h > 32 ? (
@@ -126,7 +129,7 @@ export function TreemapHeatmap({
                     {op.name}
                   </span>
                   <span className="tile-value" style={{ fontSize: 11 }}>
-                    {compactNumber(entry.value)}
+                    {labelValue}
                   </span>
                 </>
               ) : w > 26 && h > 16 ? (
@@ -158,10 +161,12 @@ function TreemapTooltip({
   metricLabel: string;
 }) {
   const { entry } = tip;
-  const op = entry.row.operator;
-  const values = years.map((year) => entry.row.yearly[year] ?? null);
+  const op = entry.operator;
+  const yearly = entry.yearly;
+  const values = yearly ? years.map((year) => yearly[year] ?? null) : [];
   const max = Math.max(1, ...values.filter((v): v is number => v !== null));
   const share = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0.0';
+  const labelValue = entry.displayValue ?? compactNumber(entry.value);
   return (
     <div className="treemap-tip" style={{ left: tip.x, top: tip.y }} role="tooltip">
       <div className="treemap-tip-head">
@@ -177,15 +182,15 @@ function TreemapTooltip({
       </div>
       <dl>
         <div>
-          <dt>累计{metricLabel}</dt>
-          <dd>{compactNumber(entry.value)}</dd>
+          <dt>{yearly ? `累计${metricLabel}` : metricLabel}</dt>
+          <dd>{labelValue}</dd>
         </div>
         <div>
           <dt>占比</dt>
           <dd>{share}%</dd>
         </div>
       </dl>
-      {years.length > 1 && (
+      {yearly && years.length > 1 && (
         <div className="treemap-tip-bars">
           {years.map((year, i) => {
             const v = values[i];
