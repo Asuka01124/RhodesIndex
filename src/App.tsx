@@ -59,6 +59,7 @@ import { BilibiliCountsPage, BilibiliCountInfo } from './BilibiliCountsPage';
 import { CollaborationToggle } from './CollaborationToggle';
 import { collaborationRoster } from './collaborations';
 import { RaritySlider } from './RaritySlider';
+import { TreemapHeatmap } from './TreemapHeatmap';
 
 const initialParams = new URLSearchParams(window.location.search);
 type PageScope = PlatformId | 'skland';
@@ -300,12 +301,6 @@ export default function App() {
   const availableRows = useMemo(() => ranked.filter((r) => r.available), [ranked]);
   const pageRows = showAll ? ranked : ranked.slice(0, INITIAL_VISIBLE);
   const maxValue = Math.max(1, ...availableRows.map((r) => r.total));
-  const maxHeatValue = Math.max(
-    1,
-    ...availableRows.flatMap((r) =>
-      Object.values(r.yearly).filter((value): value is number => value !== null),
-    ),
-  );
   const activeFilters = filterCount(filters, scope === 'pixiv');
   const hasData = availableRows.length > 0;
   const closeFilters = useCallback(() => {
@@ -1257,78 +1252,31 @@ export default function App() {
                           </div>
                         </div>
                       ) : (
-                        <div className="heatmap-scroll">
-                          <div
-                            className="heatmap"
-                            style={{ '--year-count': years.length } as CSSProperties}
-                          >
-                            <div className="heatmap-heading">
-                              <span>排名</span>
-                              <span>干员 / 阵营</span>
-                              {years.map((year) => (
-                                <span key={year}>{year}</span>
-                              ))}
-                              <span>合计</span>
-                            </div>
-                            {pageRows.map((row, i) => (
-                              <div
-                                className="heatmap-row"
-                                key={row.operator.id}
-                                style={{ '--row-index': i } as CSSProperties}
-                              >
-                                <span className="rank-number">
-                                  {row.available ? String(i + 1).padStart(2, '0') : '—'}
-                                </span>
-                                {operatorButton(row)}
-                                {years.map((year) => {
-                                  const value = row.yearly[year];
-                                  const ratio =
-                                    value === null ? 0 : Math.sqrt(value / maxHeatValue);
-                                  return (
-                                    <button
-                                      className={`heat-cell ${ratio > 0.68 ? 'intense' : ''}`}
-                                      key={year}
-                                      style={{
-                                        backgroundColor:
-                                          value === null
-                                            ? 'var(--surface-2)'
-                                            : `color-mix(in srgb, #409cff ${Math.round(ratio * 86 + 6)}%, var(--surface))`,
-                                      }}
-                                      aria-label={`${row.operator.name}，${year} 年，${value === null ? '未提供数据' : `${value.toLocaleString('zh-CN')} 次${metricLabel}`}`}
-                                      onMouseEnter={(event) => showTooltip(event, row, year)}
-                                      onMouseLeave={() => setTooltip(null)}
-                                      onClick={() => setDetail(row.operator)}
-                                    >
-                                      {value === null ? '—' : compactNumber(value)}
-                                    </button>
-                                  );
-                                })}
-                                <button
-                                  className="row-total"
-                                  onClick={() => setDetail(row.operator)}
-                                >
-                                  {row.available ? compactNumber(row.total) : '—'}
-                                </button>
-                              </div>
-                            ))}
-                          </div>
+                        <TreemapHeatmap
+                          rows={availableRows}
+                          years={years}
+                          metricLabel={metricLabel}
+                          missingCount={ranked.length - availableRows.length}
+                          onSelect={setDetail}
+                        />
+                      )}
+                      {view === 'bars' && (
+                        <div className="chart-footer">
+                          <span className="pagination-info">
+                            显示 1–{pageRows.length} 位，共 {ranked.length} 位干员
+                          </span>
+                          {ranked.length > INITIAL_VISIBLE && (
+                            <button
+                              className={`expand-toggle ${showAll ? 'expanded' : ''}`}
+                              aria-expanded={showAll}
+                              onClick={() => setShowAll((value) => !value)}
+                            >
+                              {showAll ? '收起，只看前 100 位' : `展开全部 ${ranked.length} 位`}
+                              <ChevronDown size={14} aria-hidden="true" />
+                            </button>
+                          )}
                         </div>
                       )}
-                      <div className="chart-footer">
-                        <span className="pagination-info">
-                          显示 1–{pageRows.length} 位，共 {ranked.length} 位干员
-                        </span>
-                        {ranked.length > INITIAL_VISIBLE && (
-                          <button
-                            className={`expand-toggle ${showAll ? 'expanded' : ''}`}
-                            aria-expanded={showAll}
-                            onClick={() => setShowAll((value) => !value)}
-                          >
-                            {showAll ? '收起，只看前 100 位' : `展开全部 ${ranked.length} 位`}
-                            <ChevronDown size={14} aria-hidden="true" />
-                          </button>
-                        )}
-                      </div>
                     </>
                   )}
                 </section>
@@ -1344,20 +1292,6 @@ export default function App() {
                         : '当前为用户导入数据，未混入演示数值。'}
                     按作品发布年份分组。
                   </span>
-                  {view === 'heatmap' && (
-                    <span className="heat-scale">
-                      较少
-                      <span>
-                        {[10, 30, 50, 70, 90].map((p) => (
-                          <i
-                            key={p}
-                            style={{ background: `color-mix(in srgb, #409cff ${p}%, #fff)` }}
-                          />
-                        ))}
-                      </span>
-                      较多
-                    </span>
-                  )}
                 </div>
                 <footer className="page-footer">
                   <span>为喜欢的干员，记录每一次回响。</span>

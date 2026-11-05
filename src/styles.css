@@ -3826,3 +3826,274 @@ small {
     background 0.18s ease;
   touch-action: none;
 }
+
+/* ---------- Treemap heatmap (all selected years merged) ---------- */
+.treemap-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 22px 22px;
+}
+.treemap-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+}
+.treemap-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.treemap-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.treemap-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--line);
+}
+.treemap-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 14px;
+  background: var(--surface-2);
+  min-width: 0;
+}
+.treemap-stats span {
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+.treemap-stats strong {
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.treemap-stats small {
+  margin-left: 5px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.treemap-map {
+  position: relative;
+  width: 100%;
+  min-height: 320px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.treemap-group-label {
+  position: absolute;
+  height: 20px;
+  line-height: 20px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.treemap-group-label span {
+  margin-left: 5px;
+  color: #a1a1a6;
+  font-weight: 500;
+}
+.treemap-tile {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    left 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 0.4s,
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+.treemap-tile:hover,
+.treemap-tile:focus-visible {
+  z-index: 2;
+  transform: scale(1.015);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+  outline: none;
+}
+.treemap-tile img {
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 35%);
+}
+.treemap-tile .tile-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 600;
+  line-height: 1.15;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.treemap-tile .tile-change {
+  margin-top: 1px;
+  line-height: 1.2;
+  opacity: 0.92;
+  font-variant-numeric: tabular-nums;
+}
+.treemap-tile .tile-total {
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.treemap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.treemap-scale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.treemap-scale > div {
+  display: flex;
+  overflow: hidden;
+  border-radius: 4px;
+}
+.treemap-scale > div i {
+  display: block;
+  width: 34px;
+  height: 14px;
+  font-size: 10px;
+  font-style: normal;
+  line-height: 14px;
+  text-align: center;
+}
+.treemap-scale .treemap-new-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+.treemap-tip {
+  position: fixed;
+  z-index: 60;
+  width: 248px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgb(255 255 255 / 80%);
+  box-shadow:
+    0 10px 40px rgb(0 0 0 / 16%),
+    0 0 0 0.5px rgb(0 0 0 / 6%);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  pointer-events: none;
+}
+.treemap-tip-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.treemap-tip-head img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface-2);
+}
+.treemap-tip-head div {
+  display: flex;
+  flex-direction: column;
+}
+.treemap-tip-head strong {
+  font-size: 0.9375rem;
+}
+.treemap-tip-head span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.treemap-tip dl {
+  margin: 10px 0 0;
+}
+.treemap-tip dl div {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 0.8125rem;
+}
+.treemap-tip dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.treemap-tip-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 56px;
+  margin-top: 10px;
+}
+.treemap-tip-bars div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+}
+.treemap-tip-bars i {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 3px 3px 1px 1px;
+  background: #d2d2d7;
+}
+.treemap-tip-bars i.peak {
+  background: var(--text);
+}
+.treemap-tip-bars i.missing {
+  background: repeating-linear-gradient(45deg, #e8e8ed 0 3px, #f5f5f7 3px 6px);
+}
+.treemap-tip-bars span {
+  margin-top: 3px;
+  color: #a1a1a6;
+  font-size: 9px;
+}
+@media (max-width: 650px) {
+  .treemap-view {
+    padding: 4px 12px 14px;
+  }
+  .treemap-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .treemap-tip {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .treemap-tile {
+    transition: none;
+  }
+}
