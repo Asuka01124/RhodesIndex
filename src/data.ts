@@ -45,14 +45,6 @@ export const PLATFORMS: {
     color: '#db6d54',
   },
   {
-    id: 'x',
-    name: 'X',
-    description: '创作者动态',
-    login: '搜索需要登录',
-    icon: 'x',
-    color: '#222222',
-  },
-  {
     id: 'xiaohongshu',
     name: '小红书',
     description: '图文与生活创作',
@@ -137,7 +129,6 @@ export function createDemoRecords(operators: Operator[]): HeatRecord[] {
 
 export function platformSearch(platform: PlatformId, operator: Operator): string {
   const zh = encodeURIComponent(operator.name);
-  const tag = encodeURIComponent(`#${operator.name}`);
   switch (platform) {
     case 'pixiv':
       return `https://www.pixiv.net/tags/${zh}/artworks`;
@@ -145,8 +136,6 @@ export function platformSearch(platform: PlatformId, operator: Operator): string
       return `https://search.bilibili.com/all?keyword=${zh}`;
     case 'weibo':
       return `https://s.weibo.com/weibo?q=${encodeURIComponent(`#${operator.name}#`)}`;
-    case 'x':
-      return `https://x.com/search?q=${tag}&f=live`;
     case 'youtube':
       return `https://www.youtube.com/hashtag/${zh}`;
     case 'xiaohongshu':

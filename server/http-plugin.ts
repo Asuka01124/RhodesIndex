@@ -25,7 +25,7 @@ export function localCollectorPlugin(): Plugin {
       const snapshot = () => {
         const live = read(path.join(local, 'http-live.json'), null) as LiveDataset | null;
         const visible = (row: { platform: PlatformId }) =>
-          !['pixiv', 'youtube', 'tumblr', 'bluesky'].includes(row.platform);
+          !['pixiv', 'youtube', 'tumblr', 'bluesky', 'x'].includes(row.platform);
         if (
           live &&
           live.works.every(visible) &&

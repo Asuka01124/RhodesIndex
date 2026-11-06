@@ -253,7 +253,7 @@ export default function App() {
     [operators, isDemo],
   );
   const importedRecords = useMemo(
-    () => imported?.records.filter((row) => row.platform !== 'youtube'),
+    () => imported?.records.filter((row) => !['youtube', 'x'].includes(row.platform)),
     [imported],
   );
   const sourceRecords =

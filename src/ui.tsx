@@ -1,22 +1,13 @@
 import { useEffect, useRef } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { PenLine, Trees, X } from 'lucide-react';
-import {
-  siPixiv,
-  siBilibili,
-  siSinaweibo,
-  siX,
-  siYoutube,
-  siXiaohongshu,
-  siTiktok,
-} from 'simple-icons';
+import { siPixiv, siBilibili, siSinaweibo, siYoutube, siXiaohongshu, siTiktok } from 'simple-icons';
 
 const brands = {
   pixiv: siPixiv,
   bilibili: siBilibili,
   weibo: siSinaweibo,
   sinaweibo: siSinaweibo,
-  x: siX,
   youtube: siYoutube,
   xiaohongshu: siXiaohongshu,
   tiktok: siTiktok,
