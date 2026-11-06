@@ -1,14 +1,5 @@
 export type PlatformId =
-  | 'pixiv'
-  | 'bilibili'
-  | 'weibo'
-  | 'x'
-  | 'youtube'
-  | 'xiaohongshu'
-  | 'douyin'
-  | 'lofter'
-  | 'tumblr'
-  | 'bluesky';
+  'pixiv' | 'bilibili' | 'weibo' | 'x' | 'youtube' | 'xiaohongshu' | 'douyin' | 'lofter';
 export type Scope = 'all' | PlatformId;
 export type Metric = 'likes' | 'views' | 'bookmarks' | 'comments';
 export type ViewMode = 'bars' | 'heatmap';

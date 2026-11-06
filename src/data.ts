@@ -76,22 +76,6 @@ export const PLATFORMS: {
     icon: 'pen',
     color: '#6e978a',
   },
-  {
-    id: 'tumblr',
-    name: 'Tumblr',
-    description: '海外同人创作',
-    login: '公开标签页可浏览，完整采集待核验',
-    icon: 'tumblr',
-    color: '#526c82',
-  },
-  {
-    id: 'bluesky',
-    name: 'Bluesky',
-    description: '创作者动态',
-    login: '搜索需要登录',
-    icon: 'bluesky',
-    color: '#659ad5',
-  },
 ];
 
 function hash(text: string): number {
@@ -153,7 +137,6 @@ export function createDemoRecords(operators: Operator[]): HeatRecord[] {
 
 export function platformSearch(platform: PlatformId, operator: Operator): string {
   const zh = encodeURIComponent(operator.name);
-  const english = encodeURIComponent(operator.englishName || operator.name);
   const tag = encodeURIComponent(`#${operator.name}`);
   switch (platform) {
     case 'pixiv':
@@ -172,9 +155,5 @@ export function platformSearch(platform: PlatformId, operator: Operator): string
       return `https://www.douyin.com/search/${zh}`;
     case 'lofter':
       return `https://www.lofter.com/tag/${zh}`;
-    case 'tumblr':
-      return `https://www.tumblr.com/tagged/${english}`;
-    case 'bluesky':
-      return `https://bsky.app/search?q=${encodeURIComponent(`#${operator.englishName || operator.name}`)}`;
   }
 }

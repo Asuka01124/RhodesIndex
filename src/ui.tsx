@@ -9,8 +9,6 @@ import {
   siYoutube,
   siXiaohongshu,
   siTiktok,
-  siTumblr,
-  siBluesky,
 } from 'simple-icons';
 
 const brands = {
@@ -22,8 +20,6 @@ const brands = {
   youtube: siYoutube,
   xiaohongshu: siXiaohongshu,
   tiktok: siTiktok,
-  tumblr: siTumblr,
-  bluesky: siBluesky,
 };
 
 export function RankingNotice() {

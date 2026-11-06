@@ -1286,33 +1286,6 @@ export default function App() {
                     </>
                   )}
                 </section>
-                <div className="chart-caption">
-                  <span>
-                    <Info size={13} strokeWidth={1.5} aria-hidden="true" />
-                    {isDemo
-                      ? '当前为演示数据，不代表实际平台热度。'
-                      : isCollected
-                        ? scope === 'pixiv'
-                          ? `已接入 ${pixiv.data?.metadata.operatorIds.length ?? 0} 位已完成干员，互动量为采集时累计值。`
-                          : `真实样本共 ${collection.live.metadata.workCount} 件作品，非全站总量；缺失指标不计为零。`
-                        : '当前为用户导入数据，未混入演示数值。'}
-                    按作品发布年份分组。
-                  </span>
-                  {view === 'heatmap' && (
-                    <span className="heat-scale">
-                      较少
-                      <span>
-                        {[15, 35, 55, 75, 94].map((p) => (
-                          <i
-                            key={p}
-                            style={{ background: `color-mix(in srgb, #0071e3 ${p}%, #eef4fc)` }}
-                          />
-                        ))}
-                      </span>
-                      较多
-                    </span>
-                  )}
-                </div>
                 <footer className="page-footer">
                   <span>为喜欢的干员，记录每一次回响。</span>
                   <button onClick={() => setDataOpen(true)}>

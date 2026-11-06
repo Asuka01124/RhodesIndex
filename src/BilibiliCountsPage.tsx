@@ -798,39 +798,6 @@ export function BilibiliCountsPage({
             </>
           )}
         </section>
-        <div className="chart-caption count-caption">
-          <span>
-            <Info size={13} aria-hidden="true" />
-            {isSkland
-              ? '森空岛话题的原生累计统计。未取得的指标留空，共用话题只排一次。'
-              : isLofter
-                ? '平台标签浏览／参与显示值；约数按显示值估计排序，未取得不计为零。'
-                : isDouyin
-                  ? '同名话题累计播放量；角色归属待核实，可能包含其他内容，不代表作品数。'
-                  : isXiaohongshu
-                    ? '未取得浏览量的话题保留为空。'
-                    : isWeibo
-                      ? '角色话题的原生统计；万、亿为约数，未取得的指标留空。'
-                      : '角色名＋明日方舟，联动再加作品名；数量来自组合搜索，不要求打齐标签，不代表全站总量。'}
-          </span>
-          <span>
-            {view === 'heatmap' && treemapEntries.length > 0 && (
-              <span className="heat-scale" style={{ marginRight: 14 }}>
-                较少
-                <span>
-                  {[15, 35, 55, 75, 94].map((p) => (
-                    <i
-                      key={p}
-                      style={{ background: `color-mix(in srgb, #0071e3 ${p}%, #eef4fc)` }}
-                    />
-                  ))}
-                </span>
-                较多
-              </span>
-            )}
-            更新至 {dateLabel(data?.metadata.generatedAt)}
-          </span>
-        </div>
         <footer className="page-footer">
           <span>为喜欢的干员，记录每一次回响。</span>
           <button onClick={onInfo}>

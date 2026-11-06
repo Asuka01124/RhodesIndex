@@ -19,8 +19,6 @@ export const PLATFORM_IDS = [
   'xiaohongshu',
   'douyin',
   'lofter',
-  'tumblr',
-  'bluesky',
 ] as const;
 export const EMPTY_FILTERS: Filters = {
   professions: [],
