@@ -60,6 +60,7 @@ import { CollaborationToggle } from './CollaborationToggle';
 import { collaborationRoster } from './collaborations';
 import { RaritySlider } from './RaritySlider';
 import { TreemapHeatmap } from './TreemapHeatmap';
+import { FavoritesMatrixPage } from './FavoritesMatrixPage';
 
 const initialParams = new URLSearchParams(window.location.search);
 type PageScope = PlatformId | 'skland';
@@ -131,7 +132,8 @@ export default function App() {
     initialParams.get('metric') === 'views' ? 'views' : 'likes',
   );
   const [pixivMetric, setPixivMetric] = useState<Metric>(
-    PIXIV_METRICS.find((option) => option.value === initialParams.get('metric'))?.value ?? 'views',
+    PIXIV_METRICS.find((option) => option.value === initialParams.get('metric'))?.value ??
+      'workCount',
   );
   const metric = scope === 'pixiv' ? pixivMetric : generalMetric;
   const setMetric = scope === 'pixiv' ? setPixivMetric : setGeneralMetric;
@@ -175,8 +177,8 @@ export default function App() {
     pageScope === 'xiaohongshu' ||
     pageScope === 'weibo' ||
     pageScope === 'skland';
-  const collection = useLiveData(!isTagSummary && scope !== 'pixiv');
-  const pixiv = usePixivSummary(scope === 'pixiv');
+  const collection = useLiveData(!isTagSummary && scope !== 'pixiv' && !favoritesOnly);
+  const pixiv = usePixivSummary(scope === 'pixiv' || favoritesOnly);
   const [detail, setDetail] = useState<Operator | null>(null);
   const [toast, setToast] = useState('');
   const [tooltip, setTooltip] = useState<{
@@ -207,6 +209,7 @@ export default function App() {
     metric === 'views' && scope !== 'pixiv'
       ? '观看量'
       : PIXIV_METRICS.find((option) => option.value === metric)!.label;
+  const metricUnit = metric === 'workCount' ? '件' : '次';
   const isDemo = sourceMode === 'demo';
   const isCollected = sourceMode === 'collected';
   const modeLabel = isDemo ? '演示' : isCollected ? '真实样本' : '导入';
@@ -262,7 +265,9 @@ export default function App() {
       : isDemo
         ? demoRecords
         : scope === 'pixiv'
-          ? (pixiv.data?.records ?? [])
+          ? metric === 'workCount'
+            ? (pixiv.data?.countRecords ?? pixiv.data?.records ?? [])
+            : (pixiv.data?.records ?? [])
           : collection.live.records;
   const records = useMemo(
     () => (scope === 'pixiv' ? filterPixivRecords(sourceRecords, filters) : sourceRecords),
@@ -273,6 +278,19 @@ export default function App() {
     [operators, includeCollaborations],
   );
   const activeYears = view === 'heatmap' ? YEARS : years;
+  const knownCountOperators = useMemo(
+    () =>
+      new Set(
+        isCollected && ((scope === 'pixiv' && metric === 'workCount') || favoritesOnly)
+          ? (
+              pixiv.data?.metadata.countOperatorIds ??
+              pixiv.data?.metadata.operatorIds ??
+              []
+            ).filter((id) => !pixiv.data?.metadata.unknownYearCounts?.[id])
+          : [],
+      ),
+    [isCollected, scope, metric, favoritesOnly, pixiv.data],
+  );
   const ranked = useMemo(
     () =>
       rankOperators(
@@ -285,6 +303,7 @@ export default function App() {
         deferredQuery,
         sort,
         favoritesOnly ? favorites : undefined,
+        knownCountOperators,
       ),
     [
       visibleOperators,
@@ -296,6 +315,7 @@ export default function App() {
       deferredQuery,
       sort,
       favoritesOnly,
+      knownCountOperators,
       favorites,
     ],
   );
@@ -582,7 +602,7 @@ export default function App() {
       value:
         value === null
           ? '未提供数据'
-          : `${value.toLocaleString('zh-CN')} 次${metricLabel === '点赞' ? '点赞' : '观看'}`,
+          : `${value.toLocaleString('zh-CN')} ${metricUnit}${metricLabel}`,
       color: YEAR_COLORS[year],
     });
   }
@@ -800,7 +820,32 @@ export default function App() {
           key={pageTransitionId}
           className={`page-transition-stage ${pageEntering ? 'page-entering' : ''}`}
         >
-          {isTagSummary ? (
+          {favoritesOnly ? (
+            <FavoritesMatrixPage
+              operators={operators}
+              favorites={favorites}
+              onFavorite={toggleFavorite}
+              includeCollaborations={includeCollaborations}
+              onIncludeCollaborationsChange={setIncludeCollaborations}
+              query={query}
+              onQueryChange={setQuery}
+              filters={filters}
+              onFiltersChange={setFilters}
+              filterOpen={filterOpen}
+              onFilterOpen={() => setFilterOpen(!filterOpen)}
+              onCloseFilters={closeFilters}
+              searchRef={searchRef}
+              filterRef={filterRef}
+              mobileToggleRef={mobileToggleRef}
+              mobileMenu={mobileMenu}
+              onToggleMenu={() => setMobileMenu(!mobileMenu)}
+              onOpenPixivDetail={(op, nextPixivMetric) => {
+                setPixivMetric(nextPixivMetric);
+                setDetail(op);
+              }}
+              onOpenDataInfo={() => setDataOpen(true)}
+            />
+          ) : isTagSummary ? (
             <BilibiliCountsPage
               platform={pageScope}
               operators={operators}
@@ -952,13 +997,17 @@ export default function App() {
                         )}
                       </span>
                       <h1>
-                        {view === 'bars'
-                          ? isCollected
-                            ? '已核验样本排行'
-                            : '干员热度排行'
-                          : isCollected
-                            ? '已采集年度样本'
-                            : '年度热度图谱'}
+                        {scope === 'pixiv' && metric === 'workCount'
+                          ? view === 'bars'
+                            ? '作品数量排行'
+                            : '年度作品分布'
+                          : view === 'bars'
+                            ? isCollected
+                              ? '已核验样本排行'
+                              : '干员热度排行'
+                            : isCollected
+                              ? '已采集年度样本'
+                              : '年度热度图谱'}
                       </h1>
                       <span className="chart-count">{ranked.length}</span>
                     </div>
@@ -1029,7 +1078,7 @@ export default function App() {
                           ) : (
                             <ArrowUp size={12} aria-hidden="true" />
                           )}
-                          {sort === 'desc' ? '热度降序' : '热度升序'}
+                          {`${metric === 'workCount' ? '数量' : '热度'}${sort === 'desc' ? '降序' : '升序'}`}
                         </button>
                       </>
                     )}
@@ -1216,7 +1265,7 @@ export default function App() {
                                               backgroundColor: YEAR_COLORS[year],
                                               flexGrow: row.yearly[year] ?? 0,
                                             }}
-                                            aria-label={`${row.operator.name}，${year} 年，${(row.yearly[year] ?? 0).toLocaleString('zh-CN')} 次${metricLabel}`}
+                                            aria-label={`${row.operator.name}，${year} 年，${(row.yearly[year] ?? 0).toLocaleString('zh-CN')} ${metricUnit}${metricLabel}`}
                                             onMouseEnter={(event) => showTooltip(event, row, year)}
                                             onMouseMove={(event) => showTooltip(event, row, year)}
                                             onMouseLeave={() => setTooltip(null)}
@@ -1233,7 +1282,7 @@ export default function App() {
                                                 ),
                                                 y: rect.y - 8,
                                                 title: `${row.operator.name} · ${year}`,
-                                                value: `${compactNumber(row.yearly[year] ?? 0)} 次${metricLabel}`,
+                                                value: `${compactNumber(row.yearly[year] ?? 0)} ${metricUnit}${metricLabel}`,
                                                 color: YEAR_COLORS[year],
                                               });
                                             }}
@@ -1303,13 +1352,17 @@ export default function App() {
         (scope === 'pixiv' ? (
           <Modal title="Pixiv 统计规则" onClose={() => setDataOpen(false)}>
             <div className="count-method">
-              <h3>已完成干员的作品统计</h3>
-              <p>按作品 ID 去重，展示浏览、点赞、收藏和评论。作品类型与分级可以组合筛选。</p>
+              <h3>按角色标签统计作品与互动</h3>
+              <p>作品按 ID 去重，按发布时间统计每年数量。作品类型与分级可以组合筛选。</p>
               <p>按作品发布年份分组，互动量为采集时累计值。未取得的指标保留为空。</p>
               <p>收藏和评论若有缺失，仅累计已经取得的数值。</p>
-              <p>只接入标签分页和点赞、浏览量补齐的干员。受限、失败或尚未完成的干员保留为空。</p>
+              <p>
+                作品数只需完成标签列表，不等待互动指标；浏览、点赞等在详情补齐后分别接入。受限、失败或未取完的范围保留为空。
+              </p>
               <p>全年龄、R-18、R-18G 来自平台原生分级，未返回分级的作品归入“未标注”。</p>
-              <p>每个统计分组保留一条代表来源，完整作品记录保留在采集数据库。</p>
+              <p>
+                缺少发布时间的作品列为年份未知，不编造年份，不计入分年榜单。每组保留一条代表来源，完整作品记录保留在采集数据库。
+              </p>
               <p>同名话题仍影响排名，请自行甄别</p>
             </div>
           </Modal>
@@ -1332,13 +1385,23 @@ export default function App() {
       {detail && (
         <OperatorDetail
           operator={detail}
-          records={records}
-          scope={scope}
-          metric={metric}
+          records={
+            favoritesOnly
+              ? filterPixivRecords(
+                  pixivMetric === 'workCount'
+                    ? (pixiv.data?.countRecords ?? pixiv.data?.records ?? [])
+                    : (pixiv.data?.records ?? []),
+                  filters,
+                )
+              : records
+          }
+          scope={favoritesOnly ? 'pixiv' : scope}
+          metric={favoritesOnly ? pixivMetric : metric}
           years={years}
           isDemo={isDemo}
           isCollected={isCollected}
-          sourceWorks={isCollected ? collection.live.works : []}
+          sourceWorks={isCollected && !favoritesOnly ? collection.live.works : []}
+          knownCountOperators={knownCountOperators}
           favorite={favorites.has(detail.id)}
           onFavorite={() => toggleFavorite(detail.id)}
           onClose={() => setDetail(null)}
@@ -1379,6 +1442,7 @@ function OperatorDetail({
   isDemo,
   isCollected,
   sourceWorks,
+  knownCountOperators,
   favorite,
   onFavorite,
   onClose,
@@ -1391,11 +1455,23 @@ function OperatorDetail({
   isDemo: boolean;
   isCollected: boolean;
   sourceWorks: WorkObservation[];
+  knownCountOperators?: Set<string>;
   favorite: boolean;
   onFavorite: () => void;
   onClose: () => void;
 }) {
-  const row = rankOperators([operator], records, scope, metric, years, EMPTY_FILTERS, '')[0];
+  const row = rankOperators(
+    [operator],
+    records,
+    scope,
+    metric,
+    years,
+    EMPTY_FILTERS,
+    '',
+    'desc',
+    undefined,
+    knownCountOperators,
+  )[0];
   const max = Math.max(1, ...Object.values(row.yearly).filter((v): v is number => v !== null));
   const selectedRecords = records.filter(
     (r) => r.operatorId === operator.id && r.platform === scope && years.includes(r.year),

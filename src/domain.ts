@@ -64,6 +64,7 @@ export function rankOperators(
   query: string,
   sort: 'desc' | 'asc' = 'desc',
   favorites?: Set<string>,
+  knownCountOperators?: Set<string>,
 ): RankedOperator[] {
   const filtered = operators.filter(
     (o) => matchesOperator(o, filters, query) && (!favorites || favorites.has(o.id)),
@@ -74,8 +75,13 @@ export function rankOperators(
       {
         operator,
         total: 0,
-        available: false,
-        yearly: Object.fromEntries(years.map((y) => [y, null])),
+        available: metric === 'workCount' && Boolean(knownCountOperators?.has(operator.id)),
+        yearly: Object.fromEntries(
+          years.map((y) => [
+            y,
+            metric === 'workCount' && knownCountOperators?.has(operator.id) ? 0 : null,
+          ]),
+        ),
       },
     ]),
   );

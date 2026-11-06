@@ -150,7 +150,7 @@ export function BilibiliCountInfo({
   const isDouyin = platform === 'douyin';
   return (
     <Modal
-      title={`${isLofter ? 'LOFTER' : isDouyin ? '抖音' : '哔哩哔哩'}数据与来源`}
+      title={`${isLofter ? 'LOFTER 热度规则' : isDouyin ? '抖音热度规则' : '哔哩哔哩数据与来源'}`}
       onClose={onClose}
     >
       <div className="count-method">
@@ -177,7 +177,7 @@ export function BilibiliCountInfo({
         {isDouyin && (
           <p>
             默认隐藏播放量 10
-            亿及以上的同名话题结果。可在顶部“隐藏同名”开关中恢复查看；隐藏不随排序或筛选变化，原始数据保留。
+            亿及以上的同名话题结果，可在顶部“隐藏同名”开关中恢复查看；此外还有部分极端同名话题未予收录。
           </p>
         )}
       </div>
@@ -597,7 +597,7 @@ export function BilibiliCountsPage({
                   <kbd>/</kbd>
                 )}
               </label>
-              {isXiaohongshu || isWeibo || isSkland ? (
+              {isLofter || isDouyin || isXiaohongshu || isWeibo || isSkland ? (
                 <button
                   className="icon-button export-button"
                   aria-label={`${platformName}热度规则`}
@@ -821,7 +821,7 @@ export function BilibiliCountsPage({
   );
 }
 
-function CountDetail({
+export function CountDetail({
   platform,
   countLabel,
   operator: o,

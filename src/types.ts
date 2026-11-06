@@ -1,7 +1,7 @@
 export type PlatformId =
   'pixiv' | 'bilibili' | 'weibo' | 'youtube' | 'xiaohongshu' | 'douyin' | 'lofter';
 export type Scope = 'all' | PlatformId;
-export type Metric = 'likes' | 'views' | 'bookmarks' | 'comments';
+export type Metric = 'likes' | 'views' | 'bookmarks' | 'comments' | 'workCount';
 export type ViewMode = 'bars' | 'heatmap';
 export type Gender = '女' | '男' | '其他';
 

@@ -79,3 +79,71 @@ test('快照保留同年不同类型、分级，拒绝重复分组和错误指�
   assert.throws(() => validatePixivSummary({ ...snapshot, records: [base, base] }));
   assert.throws(() => validatePixivSummary({ ...snapshot, records: [{ ...base, bookmarks: -1 }] }));
 });
+
+test('作品榜独立接收列表完整的干员，不要求互动指标补齐', () => {
+  const snapshot = {
+    schemaVersion: 1,
+    yearBasis: 'publication_year',
+    records: [],
+    countRecords: [
+      { ...base, likes: null, views: null, bookmarks: null, comments: null, workCount: 37 },
+    ],
+    metadata: {
+      kind: 'pixiv_completed_operators',
+      generatedAt: base.observedAt,
+      operatorIds: [],
+      workCount: 0,
+      countOperatorIds: ['operator'],
+      countWorkCount: 37,
+      unknownYearCounts: {},
+    },
+  };
+  const data = validatePixivSummary(snapshot);
+  assert.equal(data.records.length, 0);
+  assert.equal(
+    rankOperators(
+      [operator],
+      data.countRecords!,
+      'pixiv',
+      'workCount',
+      [2026],
+      EMPTY_FILTERS,
+      '',
+    )[0].total,
+    37,
+  );
+  assert.equal(
+    rankOperators([operator], data.countRecords!, 'pixiv', 'views', [2026], EMPTY_FILTERS, '')[0]
+      .available,
+    false,
+  );
+  assert.throws(() =>
+    validatePixivSummary({
+      ...snapshot,
+      countRecords: [{ ...snapshot.countRecords[0], workCount: -1 }],
+    }),
+  );
+  assert.throws(() =>
+    validatePixivSummary({ ...snapshot, metadata: { ...snapshot.metadata, countOperatorIds: [] } }),
+  );
+});
+
+test('列表完整而当前年份或筛选没有作品时为真实零，未采集保持未知', () => {
+  const rows = rankOperators(
+    [operator, { ...operator, id: 'missing', name: '未知' }],
+    [],
+    'pixiv',
+    'workCount',
+    [2026],
+    EMPTY_FILTERS,
+    '',
+    'desc',
+    undefined,
+    new Set(['operator']),
+  );
+  assert.equal(rows[0].available, true);
+  assert.equal(rows[0].total, 0);
+  assert.equal(rows[0].yearly[2026], 0);
+  assert.equal(rows[1].available, false);
+  assert.equal(rows[1].yearly[2026], null);
+});
