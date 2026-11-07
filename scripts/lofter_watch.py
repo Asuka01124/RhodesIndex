@@ -65,6 +65,7 @@ def render(history, calls, details, last_change, initial, interval, trend, platf
     error = str((job.get("errors") or ["暂无"])[-1]).replace("\n", " ")[:85]
     latest = job.get("lastObservation") or {}
     search_counts = platform == "bilibili" and job.get("kind") == "search_result_count"
+    single_counts = platform == "bilibili" and job.get("kind") == "bilibili_single_character_tag_use_v1"
     views = latest.get("views") or {}
     participation = latest.get("participation") or {}
     total = job.get("totalTags", 0)
@@ -85,16 +86,19 @@ def render(history, calls, details, last_change, initial, interval, trend, platf
         f"粗估剩余  {eta}",
         f"当前处理  {str(job.get('current') or '等待任务更新')[:70]}", "",
         f"最近标签  {latest.get('tag') or '等待首条结果'}",
-        (f"组合搜索结果  {latest.get('workCount') if latest.get('workCount') is not None else '未取得'}    已汇总 {latest.get('countedWindows',0)} 个时间范围"
+        (f"单 TAG 使用数  {latest.get('workCount') if latest.get('workCount') is not None else '未取得'}"
+         if single_counts else f"组合搜索结果  {latest.get('workCount') if latest.get('workCount') is not None else '未取得'}    已汇总 {latest.get('countedWindows',0)} 个时间范围"
          if search_counts else f"已核验交集作品  {latest.get('workCount') if latest.get('workCount') is not None else '未取得'}    已检查 {latest.get('scannedRows',0)} / 排除 {latest.get('rejectedRows',0)}"
          if platform == "bilibili" else f"浏览  {views.get('display') or '未取得'}    参与  {participation.get('display') or '未取得'}"),
         f"近期速度  {chart}",
         f"最后错误  {error}", "",
         f"均速窗口：1 分钟已观测 {min(60,minute_age):.0f} 秒；5 分钟已观测 {min(300,five_age):.0f} 秒。",
-        ("角色＋明日方舟＋联动作组合搜索；读取总数，1000触顶时分段汇总，不逐条核验标签。"
+        ("中文单角色 TAG；读取 count.use，不加明日方舟，不获取视频明细。"
+         if single_counts else "角色＋明日方舟＋联动作组合搜索；读取总数，1000触顶时分段汇总，不逐条核验标签。"
          if search_counts else "B站要求角色＋明日方舟＋联动作品标签；按时间窗口翻页核验，不以搜索总数代替交集。"
          if platform == "bilibili" else "仅采集标签头部；万／亿保留原文并标近似，不冒充精确计数。"),
-        "不同标签不相加；无法取得的统计保留为空，不当作 0。",
+        ("网站合并本体与异格的 TAG 使用次数，跨标签未去重；无法取得留空。"
+         if single_counts else "不同标签不相加；无法取得的统计保留为空，不当作 0。"),
         "Ctrl+C 或关窗口仅退出监视器，不停止采集。",
     ]
 

@@ -113,10 +113,10 @@ B站独立入口现使用下述独立运行控制。其余五个平台的新入�
 
 拆分验证：六个已有平台类与拆分前 AST 相同；从在线库通过 SQLite backup 得到副本，在副本核对真实 Pixiv 查询状态和游标，并模拟从已有页继续前进。验证不修改正在运行的正式库。
 
-## 哔哩哔哩：434位干员的组合搜索结果数
+## 哔哩哔哩：单角色 TAG 使用数，本体与异格合并
 
 ```powershell
-python -X utf8 scripts/bilibili_collect.py collect --workers 1 --interval 3.5 --resume
+python -X utf8 scripts/bilibili_collect.py collect --workers 1 --interval 1.5 --resume
 python -X utf8 scripts/bilibili_collect.py collect --refresh
 python -X utf8 scripts/bilibili_collect.py stats
 python -X utf8 scripts/bilibili_collect.py export
@@ -125,19 +125,33 @@ python -X utf8 scripts/bilibili_collect.py stop
 python -X utf8 scripts/bilibili_watch.py
 ```
 
-用户已认可较快的组合搜索统计口径。当前入口使用 `scripts/collector_sources/bilibili_search_totals.py`，不再读取单标签 `/x/tag/info` 的 `count.use`，也不逐条核验视频标签。搜索词为角色中文名＋明日方舟，联动角色再加作品的首个规范名称。例如 `爱丽丝 明日方舟`、`灰烬 明日方舟 彩虹六号`、`玛露西尔 明日方舟 迷宫饭`。联动作映射沿用 `scripts/bilibili_tag_rules.py`；不分别查询别名后相加，以免重复。
+用户于 2026-11-07 选择单角色 TAG 快查。当前入口调用 bilibili_single_tags.py 和
+collector_sources/bilibili_counts.py：仅用花名册中文主名查询 /x/tag/info?tag_name=角色名，
+不加「明日方舟」，联动也不加作品名；不查询别名、不翻视频列表、不逐件请求详情。
+默认单线程，请求起点最小间隔 1.5 秒；六星优先。完整名单为 434 个角色/形态，正常每个 TAG 一请求，
+括号名称遇到 16001 时额外尝试全角括号。16001 记为不可读取，其他错误如实记录；受限停止，不补零。
 
-只读搜索接口的原生 `numResults`。低于1000时一请求结束；达到1000时将发布时间范围拆为互不重叠的子范围，读取各自小计并求和，不翻页遍历作品。每次只请求第1页、`page_size=1`，首条元数据仅用于确认时间条件生效，不用于标签过滤或按列表长度计数。相同一秒仍触顶、计数变动导致分段小计不一致时保留部分结果，不声称完整。
+每条统计保留 count.use、原生 count（包括关注字段）、标签名称与 ID、API 来源及采集时间。
+count.view 不作为播放/浏览量使用，汇总没有单件发布时间，publishedAt 为 null。
+不提供年度数、累计视频播放或互动总量，也不把 count.use 称为已核验作品数。
 
-默认单线程、请求最小间隔3.5秒，优先爱丽丝和联动角色，再处理其余角色，共434个中文主名称。遇到登录、验证或频率限制停止并保留断点，不切换出口；旧6线程／10毫秒参数不接受。`probe --tag 爱丽丝` 可单独验证新口径。
+FORM_BASE_IDS 明确维护 40 个异格/职业形态与本体的对应关系。导出时 434 个档案合为 394 个角色，
+本体一行显示，components 保留每个形态 TAG 的小计、原生指标、来源、状态和采集时间。
+合计是各 TAG 的使用次数：同一视频打多个形态 TAG 会重复计入，不是去重作品总数。
+同一 TAG 只查询并累计一次；某个形态缺失时保留 null，有数据的部分小计标下限；全部缺失时合计 null。
 
-调度在 `scripts/bilibili_search_runtime.py`。SQLite继续使用 `bilibili_tag_stats`、`bilibili_tag_history`、`bilibili_tag_queue`，分段断点单独保存于 `bilibili_search_progress`。每个时间范围保留原生总数、起止时间、API来源和采集时间，不保存逐作品列表。分段结果与待处理范围同事务提交，恢复时不会重复相加。`--resume` 接续同计划未结束的新口径批次，`--refresh` 新建批次；旧严格交集任务及其断点不会作为新口径接续，旧历史保留。
+SQLite 仍用 B站独立统计/历史/队列表；新 key 前缀为 single_tag_v1:，批次规则为
+bilibili_single_character_tag_use_v1。旧单标签、组合搜索和严格交集历史保留，均不能混入新快照，
+也不能作为新批次的完成断点。--resume 接续同计划未完成的新批次，--refresh 重新读取全部。
 
-兼容字段 `workCount` 现在承载搜索结果数，明确设置 `countBasis: search_result_total`，不再称已核验作品数。搜索可命中标题、简介等，不保证同时打齐角色、游戏、联动作标签，也不保证覆盖全站。`complete`表示本轮各时间范围小计已取得且未触顶或矛盾；未完成时的已累计数量标为下限，缺失null、真实零0。汇总数据没有单件发布时间，`publishedAt`为null，不增加年度筛选。
+默认写入新版网站 D:/RhodesIndex，可用 collect --website-root <目录> 指定。
+workCount 是兼容字段；单条 countBasis=native_tag_use，合并记录 countBasis=native_tag_use_sum。
+本地 API 与静态回退每 5 秒读取最新合并快照，网页显示「标签使用数」，详情列明各形态。
+搜索异格、按形态职业/星级筛选和异格关注可找到合并角色。
+监视器仍显示本轮原始 TAG 的完成进度，不把 394 个角色误当 434 个请求。
 
-`python -X utf8 scripts/bilibili_collect.py reset` 需在无B站任务时执行，持有独立运行锁后删除旧B站业务数据和分页断点，并重建空的新口径网站快照。主库、历史备份和验证副本均只按B站条件清理；其他平台清理前后做哈希核验，登录凭据保留。报告位于 `.local/bilibili/cleanup-report.json`。旧的单标签计数和逐视频适配器仅留作历史源码，不再由B站入口调用。
-
-网站通过 `/api/bilibili/tag-counts` 及静态回退 `/data/bilibili-tag-counts.json` 每5秒读取新快照。导出器为 `scripts/bilibili_search_export.py`，只接受新计数口径及匹配的搜索词，旧单标签和严格交集数不混入网站。页面、详情、CSV和监视器均显示“搜索结果数”，保留实际搜索词、来源、时间及部分覆盖说明。
+旧 `bilibili_search_runtime.py`、`bilibili_count_runtime.py` 和逐作品适配器作为历史源码保留。
+reset 是显式清理旧 B站数据的命令，本次切换无需执行，不清除其他平台或登录凭据。
 
 ## LOFTER 角色标签浏览与参与
 

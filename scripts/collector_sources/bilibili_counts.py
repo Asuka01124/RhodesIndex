@@ -38,7 +38,8 @@ class BilibiliCounts:
         if code in (-101, -111, -352, -412, -509, -799):
             raise CollectError(f"B站标签接口受限（代码 {code}），保存停止。", "blocked")
         if code != 0 or not isinstance(body.get("data"), dict):
-            raise CollectError(f"B站标签统计不可读取（代码 {code}）；数量未写成 0。")
+            raise CollectError(f"B站标签统计不可读取（代码 {code}）；数量未写成 0。",
+                               "unavailable" if code == 16001 else "failed")
         data = body["data"]
         tag_id = exact_count(data.get("tag_id"))
         counts = data.get("count")

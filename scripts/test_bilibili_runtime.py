@@ -24,7 +24,7 @@ class BilibiliRuntimeTests(unittest.TestCase):
             collector.return_value.run.return_value = "completed"
             platform_entry.run("bilibili", ["collect"])
             self.assertEqual(len(collector.call_args.args[0]), 434)
-            self.assertEqual(collector.call_args.kwargs["interval"], 3.5)
+            self.assertEqual(collector.call_args.kwargs["interval"], 1.5)
             self.assertTrue(collector.call_args.kwargs["resume"])
 
     def test_legacy_work_collector_does_not_offer_bilibili(self):

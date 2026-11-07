@@ -1,4 +1,4 @@
-"""B站434位干员的角色＋明日方舟＋联动作组合搜索结果数。"""
+"""B站中文单角色 TAG 使用数；网站按角色合并本体与异格。"""
 
 import argparse
 from contextlib import closing, contextmanager
@@ -11,9 +11,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / ".local/python-libs"))
 
-from bilibili_search_runtime import BilibiliSearchCollector as BilibiliCountCollector, RUNTIME
-from bilibili_search_export import export_counts
-from collector_sources.bilibili_search_totals import BilibiliSearchTotals
+from bilibili_single_tags import BilibiliSingleTagCollector as BilibiliCountCollector, RUNTIME, WEBSITE_ROOT, export_counts
+from collector_sources.bilibili_counts import BilibiliCounts
 from tag_session import CollectError, LOCAL, store_session
 from tag_store import atomic_json
 
@@ -40,7 +39,8 @@ def main(argv=None):
     collect = sub.add_parser("collect")
     collect.add_argument("--operators", help="中文名或ID，逗号分隔；默认全部434位。")
     collect.add_argument("--workers", type=int, choices=[1], default=1, help="数量采集固定单线程。")
-    collect.add_argument("--interval", type=float, default=3.5, help="每次请求最小间隔秒数，至少1秒。")
+    collect.add_argument("--interval", type=float, default=1.5, help="每次请求最小间隔秒数，至少1秒。")
+    collect.add_argument("--website-root", type=Path, default=WEBSITE_ROOT, help="新版网站目录；不修改采集分支的旧前端。")
     resume = collect.add_mutually_exclusive_group()
     resume.add_argument("--resume", dest="resume", action="store_true", default=True)
     resume.add_argument("--refresh", dest="resume", action="store_false")
@@ -79,8 +79,7 @@ def main(argv=None):
             parser.error("未收录这个角色标签。")
         with TemporaryDirectory() as directory:
             store = TagStatsStore(Path(directory), "bilibili")
-            source = BilibiliSearchTotals(operators)
-            source.bind(store, "probe")
+            source = BilibiliCounts()
             try:
                 print(json.dumps(source.read(args.tag), ensure_ascii=False))
             finally:
@@ -91,25 +90,25 @@ def main(argv=None):
         with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
             exists = db.execute("SELECT 1 FROM sqlite_master WHERE name='bilibili_tag_stats'").fetchone()
             rows = db.execute("SELECT data FROM bilibili_tag_stats ORDER BY tag_key").fetchall() if exists else []
-        print("角色\t组合搜索结果数\t检索范围\t采集时间")
+        print("角色 TAG\t标签使用数\t采集时间")
         for encoded, in rows:
             item = json.loads(encoded)
-            if item.get("countBasis") != "search_result_total":
+            if item.get("countBasis") != "native_tag_use":
                 continue
             value = item.get("workCount")
-            print(item["tag"], value if value is not None else "未取得", "已遍历检索范围" if item.get("complete") else "部分", item["observedAt"], sep="\t")
+            print(item["tag"], value if value is not None else "未取得", item["observedAt"], sep="\t")
         return 0
     if not math.isfinite(args.interval) or args.interval < 1:
         parser.error("标签数量采集间隔需为有限值且至少1秒。")
-    roster = json.loads((ROOT / "public/data/operators.json").read_text(encoding="utf-8"))
+    roster = json.loads((args.website_root / "public/data/operators.json").read_text(encoding="utf-8"))
     selected = set((args.operators or "").split(",")) - {""}
     operators = [o for o in roster if not selected or o["name"] in selected or o["id"] in selected]
     if not operators or any(not any(v in (o["name"], o["id"]) for o in operators) for v in selected):
         parser.error("存在未收录的干员名称或ID。")
-    from bilibili_tag_rules import rules_for
-    operators.sort(key=lambda o: (0 if o["name"] == "爱丽丝" else 1 if len(rules_for(o)) == 3 else 2, o["name"]))
+    operators.sort(key=lambda o: (-o.get("rarity", 0), o["name"]))
     with run_lock():
-        collector = BilibiliCountCollector(operators, interval=args.interval, resume=args.resume, runtime=RUNTIME)
+        collector = BilibiliCountCollector(operators, interval=args.interval, resume=args.resume,
+                                          runtime=RUNTIME, website_root=args.website_root)
         try:
             state = collector.run()
         finally:
