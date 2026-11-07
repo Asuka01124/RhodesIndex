@@ -88,7 +88,7 @@ export function validatePixivSummary(value: unknown): PixivSummary {
       !Array.isArray(data.metadata.countYears) ||
       !data.metadata.countYears.length ||
       data.metadata.countYears.some(
-        (year, i, years) =>
+        (year, i) =>
           !Number.isInteger(year) || year !== 2019 + i || year > new Date().getFullYear(),
       ) ||
       !Number.isFinite(Date.parse(data.metadata.countGeneratedAt ?? '')) ||

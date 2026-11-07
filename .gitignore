@@ -29,3 +29,10 @@ exports/
 *.csv
 *.bak
 *.tmp
+!public/data/pixiv-tag-counts.json
+!public/data/bilibili-tag-counts.json
+!public/data/lofter-tag-counts.json
+!public/data/douyin-tag-counts.json
+!public/data/weibo-tag-counts.json
+!public/data/xiaohongshu-tag-counts.json
+!public/data/skland-tag-counts.json

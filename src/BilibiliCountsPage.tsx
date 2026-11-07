@@ -2,12 +2,10 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, RefObject } from 'react';
 import {
   ArrowDown,
-  ArrowDownToLine,
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
   BarChart3,
-  Check,
   ChevronDown,
   Eye,
   EyeOff,
@@ -20,8 +18,8 @@ import {
   X,
 } from 'lucide-react';
 import type { Filters, NativeTagCount, Operator, TagSummaryRow, ViewMode } from './types';
-import { compactNumber, csvEscape, EMPTY_FILTERS, filterCount, YEARS } from './domain';
-import { BrandIcon, downloadFile, Modal, RankingNotice, Segmented } from './ui';
+import { compactNumber, EMPTY_FILTERS, filterCount, YEARS } from './domain';
+import { BrandIcon, Modal, RankingNotice, Segmented } from './ui';
 import { FilterPanel } from './Filters';
 import { rankTagCounts } from './tagCounts';
 import { TreemapHeatmap } from './TreemapHeatmap';
@@ -319,7 +317,6 @@ export function BilibiliCountsPage({
   const [sort, setSort] = useState<'asc' | 'desc'>('desc');
   const [showAll, setShowAll] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [exported, setExported] = useState(false);
   const deferredQuery = useDeferredValue(query);
   const hiddenSet = useMemo(() => new Set(hiddenIds), [hiddenIds]);
   const ranked = useMemo(
@@ -386,72 +383,6 @@ export function BilibiliCountsPage({
     hideAmbiguous,
     hiddenSet,
   ]);
-  useEffect(() => {
-    if (!exported) return;
-    const timer = setTimeout(() => setExported(false), 2500);
-    return () => clearTimeout(timer);
-  }, [exported]);
-  const exportCsv = () => {
-    const matrix = isLofter
-      ? [
-          [
-            '干员',
-            '职业',
-            '阵营',
-            '浏览（原文）',
-            '浏览精度',
-            '参与（原文）',
-            '参与精度',
-            '来源标签',
-            '来源',
-            '采集时间',
-          ],
-          ...ranked.map(({ operator: o, record: r }) => [
-            o.name,
-            o.profession,
-            o.factions.join('、'),
-            r?.nativeViews?.display ?? null,
-            r?.nativeViews ? (r.nativeViews.exact ? '精确' : '约数') : '未取得',
-            r?.nativeParticipation?.display ?? null,
-            r?.nativeParticipation ? (r.nativeParticipation.exact ? '精确' : '约数') : '未取得',
-            r?.tag ?? o.name,
-            r?.url ?? '',
-            r?.observedAt ?? '',
-          ]),
-        ]
-      : isDouyin
-        ? [
-            ['干员', '话题', '话题累计播放量', '话题ID', '归属说明', '来源', '采集时间'],
-            ...ranked.map(({ operator: o, record: r }) => [
-              o.name,
-              r?.tag ?? o.name,
-              r?.workCount ?? null,
-              r?.topicId ?? '',
-              '同名话题，角色归属待核实',
-              r?.apiSourceUrl ?? '',
-              r?.observedAt ?? '',
-            ]),
-          ]
-        : [
-            ['干员', '职业', '阵营', '标签使用数', '统计范围', '采集 TAG', '来源', '采集时间'],
-            ...ranked.map(({ operator: o, record: r }) => [
-              o.name,
-              o.profession,
-              o.factions.join('、'),
-              r?.workCount ?? null,
-              r?.coverageNote ?? '未取得',
-              r?.searchTerms?.join('、') ?? '',
-              r?.apiSourceUrl ?? '',
-              r?.observedAt ?? '',
-            ]),
-          ];
-    downloadFile(
-      `罗德指数-${platformName}-${isDouyin ? '话题' : '标签'}统计.csv`,
-      '\ufeff' + matrix.map((row) => row.map(csvEscape).join(',')).join('\r\n'),
-      'text/csv;charset=utf-8',
-    );
-    setExported(true);
-  };
   const reset = () => {
     onFiltersChange({ ...EMPTY_FILTERS, rarityTiers: filters.rarityTiers });
     onQueryChange('');
@@ -604,36 +535,15 @@ export function BilibiliCountsPage({
                   <kbd>/</kbd>
                 )}
               </label>
-              {isLofter ||
-              isDouyin ||
-              isXiaohongshu ||
-              isWeibo ||
-              isSkland ||
-              platform === 'bilibili' ? (
-                <button
-                  className="icon-button export-button"
-                  aria-label={`${platformName}热度规则`}
-                  title={`${platformName}热度规则`}
-                  aria-haspopup="dialog"
-                  onClick={onInfo}
-                >
-                  <Info size={16} aria-hidden="true" />
-                </button>
-              ) : (
-                <button
-                  className="icon-button export-button"
-                  aria-label={`导出${isDouyin ? '话题' : '标签'}统计 CSV`}
-                  title={`导出${isDouyin ? '话题' : '标签'}统计 CSV`}
-                  onClick={exportCsv}
-                  disabled={!data}
-                >
-                  {exported ? (
-                    <Check size={16} aria-hidden="true" />
-                  ) : (
-                    <ArrowDownToLine size={16} aria-hidden="true" />
-                  )}
-                </button>
-              )}
+              <button
+                className="icon-button export-button"
+                aria-label={platformName + '热度规则'}
+                title={platformName + '热度规则'}
+                aria-haspopup="dialog"
+                onClick={onInfo}
+              >
+                <Info size={16} aria-hidden="true" />
+              </button>
             </div>
           </div>
           <div className="chart-options count-options">
@@ -1054,11 +964,7 @@ export function CountDetail({
           <dl className="count-detail-meta">
             {r.components.map((part) => (
               <div key={part.tag}>
-                <dt>
-                  <a href={part.url || part.apiSourceUrl} target="_blank" rel="noreferrer">
-                    #{part.nativeTag}
-                  </a>
-                </dt>
+                <dt>#{part.nativeTag}</dt>
                 <dd>
                   {part.workCount === null ? '未取得' : part.workCount.toLocaleString('zh-CN')}
                   <small className="muted"> · {dateLabel(part.observedAt)}</small>
@@ -1073,39 +979,6 @@ export function CountDetail({
       {r?.updateError && (
         <p className="count-message">最近刷新未成功，保留上次的数量和采集时间：{r.updateError}</p>
       )}
-      <h4 className="detail-section-title">记录来源</h4>
-      <div className="record-sources">
-        {r?.url && (
-          <a href={r.url} target="_blank" rel="noreferrer">
-            {platform === 'lofter'
-              ? '打开平台标签页'
-              : isTopic
-                ? '查看平台原始汇总'
-                : '打开本体标签页'}
-            <ArrowUpRight size={13} aria-hidden="true" />
-          </a>
-        )}
-        {!isSkland && r?.apiSourceUrl && r.apiSourceUrl !== r.url && (
-          <a href={r.apiSourceUrl} target="_blank" rel="noreferrer">
-            查看平台原始统计
-            <ArrowUpRight size={13} aria-hidden="true" />
-          </a>
-        )}
-      </div>
-      <p className="muted detail-explanation">
-        {platform === 'lofter'
-          ? '浏览和参与是不同指标；参与不等同于已核验的去重作品数。'
-          : platform === 'douyin'
-            ? '这是平台同名话题的原生累计播放量 view_count；角色归属尚待核实，可能包含其他内容，不能当作作品量或角色专属热度。'
-            : isXiaohongshu
-              ? XIAOHONGSHU_METHOD
-              : isSkland
-                ? '浏览、发帖和讨论分别取自话题详情的原生累计字段。'
-                : isWeibo
-                  ? '原创人数、讨论次数和阅读次数均来自话题页“数据总览”；万、亿为约数，缺失保留为空，不能当作微博全站热度。'
-                  : '读取各形态单 TAG 的原生 count.use，本体与异格合并相加。标签之间未去重；同名内容也可能计入。缺失形态留空，部分小计标为下限。'}{' '}
-        不同角色可能包含同一作品，不将角色数值相加为平台总量。
-      </p>
     </Modal>
   );
 }

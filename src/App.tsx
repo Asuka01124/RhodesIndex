@@ -2,7 +2,6 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import type { CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import {
   ArrowDown,
-  ArrowDownToLine,
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
@@ -22,43 +21,36 @@ import {
   Play,
   Search,
   SlidersHorizontal,
-  Sparkles,
   Star,
   X,
 } from 'lucide-react';
 import type {
   Filters,
-  HeatDataset,
   HeatRecord,
   Metric,
   Operator,
   RankedOperator,
   PlatformId,
   ViewMode,
-  DataMode,
-  WorkObservation,
 } from './types';
 import {
   compactNumber,
-  csvEscape,
   DEFAULT_FILTERS,
   EMPTY_FILTERS,
   filterCount,
   rankOperators,
-  validateDataset,
   YEARS,
 } from './domain';
-import { createDemoRecords, PLATFORMS, platformSearch, YEAR_COLORS } from './data';
-import { BrandIcon, downloadFile, Modal, RankingNotice, Segmented } from './ui';
+import { PLATFORMS, YEAR_COLORS } from './data';
+import { BrandIcon, Modal, RankingNotice, Segmented } from './ui';
 import { FilterPanel } from './Filters';
-import { DataPanel } from './DataPanel';
-import { useLiveData } from './useLiveData';
 import { preloadTagSnapshots, usePixivSummary } from './useTagCounts';
 import { effectivePixivFilters, filterPixivRecords, PIXIV_METRICS } from './pixiv';
 import { SidebarHighlight } from './SidebarHighlight';
 import { BilibiliCountsPage, BilibiliCountInfo } from './BilibiliCountsPage';
 import { CollaborationToggle } from './CollaborationToggle';
 import { collaborationRoster } from './collaborations';
+import { publicUrl } from './publicUrls';
 import { RaritySlider } from './RaritySlider';
 import { TreemapHeatmap } from './TreemapHeatmap';
 import { FavoritesMatrixPage } from './FavoritesMatrixPage';
@@ -181,8 +173,6 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
-  const [imported, setImported] = useState<HeatDataset | null>(null);
-  const [sourceMode, setSourceMode] = useState<DataMode>('collected');
   const isTagSummary =
     pageScope === 'bilibili' ||
     pageScope === 'lofter' ||
@@ -190,7 +180,6 @@ export default function App() {
     pageScope === 'xiaohongshu' ||
     pageScope === 'weibo' ||
     pageScope === 'skland';
-  const collection = useLiveData(!isTagSummary && scope !== 'pixiv' && !favoritesOnly);
   const pixiv = usePixivSummary(scope === 'pixiv' || favoritesOnly);
   const [detail, setDetail] = useState<Operator | null>(null);
   const [toast, setToast] = useState('');
@@ -223,10 +212,7 @@ export default function App() {
       ? '观看量'
       : PIXIV_METRICS.find((option) => option.value === metric)!.label;
   const metricUnit = metric === 'workCount' ? '件' : '次';
-  const isDemo = sourceMode === 'demo';
-  const isCollected = sourceMode === 'collected';
   const annualCounts =
-    isCollected &&
     scope === 'pixiv' &&
     metric === 'workCount' &&
     pixiv.data?.metadata.countMethod === 'chinese_base_tag_year_total';
@@ -234,28 +220,18 @@ export default function App() {
     () => effectivePixivFilters(filters, annualCounts),
     [filters, annualCounts],
   );
-  const modeLabel = isDemo ? '演示' : isCollected ? '真实样本' : '导入';
 
   useEffect(() => {
     const controller = new AbortController();
     setLoadError(false);
-    fetch('/data/operators.json', { signal: controller.signal })
+    fetch(publicUrl('data/operators.json'), { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error('档案加载失败');
         return response.json() as Promise<Operator[]>;
       })
       .then((data) => {
         if (!Array.isArray(data) || !data.length) throw new Error('档案格式无效');
-        setOperators(data);
-        const saved = readLocal<unknown>('imported', null);
-        if (saved) {
-          try {
-            setImported(validateDataset(saved, data));
-            if (readLocal<string>('sourceMode', 'demo') === 'imported') setSourceMode('imported');
-          } catch {
-            setToast('已保存的导入文件格式无效，当前使用真实采集模式。');
-          }
-        }
+        setOperators(data.map((operator) => ({ ...operator, avatar: publicUrl(operator.avatar) })));
       })
       .catch((error) => {
         if (error.name !== 'AbortError') setLoadError(true);
@@ -273,24 +249,10 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [pageTransitionId, rosterReady]);
 
-  const demoRecords = useMemo(
-    () => (isDemo ? createDemoRecords(operators) : []),
-    [operators, isDemo],
-  );
-  const importedRecords = useMemo(
-    () => imported?.records.filter((row) => !['youtube', 'x'].includes(row.platform)),
-    [imported],
-  );
   const sourceRecords =
-    sourceMode === 'imported' && importedRecords
-      ? importedRecords
-      : isDemo
-        ? demoRecords
-        : scope === 'pixiv'
-          ? metric === 'workCount'
-            ? (pixiv.data?.countRecords ?? pixiv.data?.records ?? [])
-            : (pixiv.data?.records ?? [])
-          : collection.live.records;
+    metric === 'workCount'
+      ? (pixiv.data?.countRecords ?? pixiv.data?.records ?? [])
+      : (pixiv.data?.records ?? []);
   const records = useMemo(
     () => (scope === 'pixiv' ? filterPixivRecords(sourceRecords, pixivFilters) : sourceRecords),
     [scope, sourceRecords, pixivFilters],
@@ -306,7 +268,7 @@ export default function App() {
   const knownCountOperators = useMemo(
     () =>
       new Set(
-        isCollected && ((scope === 'pixiv' && metric === 'workCount') || favoritesOnly)
+        (scope === 'pixiv' && metric === 'workCount') || favoritesOnly
           ? (
               pixiv.data?.metadata.countOperatorIds ??
               pixiv.data?.metadata.operatorIds ??
@@ -314,7 +276,7 @@ export default function App() {
             ).filter((id) => !pixiv.data?.metadata.unknownYearCounts?.[id])
           : [],
       ),
-    [isCollected, scope, metric, favoritesOnly, pixiv.data],
+    [scope, metric, favoritesOnly, pixiv.data],
   );
   const currentHiddenIds = useMemo(
     () => (favoritesOnly ? [] : (hiddenByPlatform[pageScope] ?? [])),
@@ -373,7 +335,6 @@ export default function App() {
     deferredQuery,
     favoritesOnly,
     sort,
-    sourceMode,
     currentHiddenSet,
   ]);
   useEffect(() => {
@@ -637,20 +598,6 @@ export default function App() {
     writeLocal('hiddenOperators', next);
     setToast('已恢复全部隐藏干员');
   }
-  function setDataMode(mode: DataMode) {
-    setSourceMode(mode);
-    writeLocal('sourceMode', mode);
-  }
-  function importDataset(data: HeatDataset) {
-    try {
-      localStorage.setItem('rhodes.imported', JSON.stringify(data));
-      localStorage.setItem('rhodes.sourceMode', JSON.stringify('imported'));
-    } catch {
-      throw new Error('当前浏览器存储不足或不可用，数据未导入；请缩小文件或允许本机存储。');
-    }
-    setImported(data);
-    setSourceMode('imported');
-  }
   function showTooltip(event: MouseEvent<HTMLElement>, row: RankedOperator, year: number) {
     const value = row.yearly[year];
     setTooltip({
@@ -670,43 +617,6 @@ export default function App() {
     setQuery('');
     setFavoritesOnly(false);
   }
-  function exportCsv() {
-    const matrix: (string | number | null)[][] = [
-      [
-        '干员',
-        '职业',
-        '阵营',
-        '性别',
-        '星级',
-        ...years.map((year) => `${year}年${metricLabel}`),
-        `${metricLabel}合计`,
-        '平台',
-        '数据模式',
-      ],
-      ...ranked.map((row) => [
-        row.operator.name,
-        row.operator.profession,
-        row.operator.factions.join('、'),
-        row.operator.originalGender,
-        row.operator.rarity,
-        ...years.map((year) => row.yearly[year]),
-        row.available ? row.total : null,
-        platformName,
-        isDemo
-          ? '演示数据，非真实统计'
-          : isCollected
-            ? '公开作品真实样本，部分覆盖'
-            : '用户导入数据',
-      ]),
-    ];
-    downloadFile(
-      `罗德指数-${platformName}-${metricLabel}-${modeLabel}.csv`,
-      '\ufeff' + matrix.map((row) => row.map(csvEscape).join(',')).join('\r\n'),
-      'text/csv;charset=utf-8',
-    );
-    setToast(`已导出 ${ranked.length} 位干员的当前筛选数据`);
-  }
-
   const operatorButton = (row: RankedOperator) => (
     <div className="operator-cell">
       <button
@@ -772,7 +682,7 @@ export default function App() {
           aria-label={`罗德指数，返回${homePlatformName}`}
           onClick={() => changePlatform(homePlatform)}
         >
-          <img src="/favicon.svg" width={42} height={42} alt="" />
+          <img src={publicUrl('favicon.svg')} width={42} height={42} alt="" />
           <span>
             <strong>
               罗德指数<span className="brand-dot">.</span>
@@ -1063,12 +973,8 @@ export default function App() {
                             ? '作品数量排行'
                             : '年度作品分布'
                           : view === 'bars'
-                            ? isCollected
-                              ? '已核验样本排行'
-                              : '干员热度排行'
-                            : isCollected
-                              ? '已采集年度样本'
-                              : '年度热度图谱'}
+                            ? '已采集样本排行'
+                            : '已采集年度样本'}
                       </h1>
                       <span className="chart-count">{ranked.length}</span>
                     </div>
@@ -1092,16 +998,12 @@ export default function App() {
                       </label>
                       <button
                         className="icon-button export-button"
-                        aria-label={scope === 'pixiv' ? 'Pixiv 统计规则' : '导出当前筛选 CSV'}
-                        title={scope === 'pixiv' ? 'Pixiv 统计规则' : '导出当前筛选 CSV'}
-                        onClick={scope === 'pixiv' ? () => setDataOpen(true) : exportCsv}
+                        aria-label="Pixiv 统计规则"
+                        title="Pixiv 统计规则"
+                        onClick={() => setDataOpen(true)}
                         disabled={!operators.length}
                       >
-                        {scope === 'pixiv' ? (
-                          <Info size={16} strokeWidth={1.5} aria-hidden="true" />
-                        ) : (
-                          <ArrowDownToLine size={16} strokeWidth={1.5} aria-hidden="true" />
-                        )}
+                        <Info size={16} strokeWidth={1.5} aria-hidden="true" />
                       </button>
                     </div>
                   </div>
@@ -1287,7 +1189,7 @@ export default function App() {
                     <div className="empty-state">
                       <Database size={30} strokeWidth={1.2} aria-hidden="true" />
                       <h3>
-                        {isCollected && scope === 'pixiv' && pixiv.loading
+                        {scope === 'pixiv' && pixiv.loading
                           ? '正在读取 Pixiv 统计'
                           : `当前范围还没有${metricLabel}数据`}
                       </h3>
@@ -1461,20 +1363,7 @@ export default function App() {
           </Modal>
         ) : isTagSummary ? (
           <BilibiliCountInfo platform={pageScope} onClose={() => setDataOpen(false)} />
-        ) : (
-          <DataPanel
-            operators={operators}
-            imported={imported}
-            activeMode={sourceMode}
-            onUseDemo={() => setDataMode('demo')}
-            onUseImported={() => setDataMode('imported')}
-            onImport={importDataset}
-            onClose={() => setDataOpen(false)}
-            collection={collection}
-            filteredIds={ranked.map((row) => row.operator.id)}
-            onUseCollected={() => setDataMode('collected')}
-          />
-        ))}
+        ) : null)}
       {detail && (
         <OperatorDetail
           operator={detail}
@@ -1495,9 +1384,6 @@ export default function App() {
           scope={favoritesOnly ? 'pixiv' : scope}
           metric={favoritesOnly ? pixivMetric : metric}
           years={years}
-          isDemo={isDemo}
-          isCollected={isCollected}
-          sourceWorks={isCollected && !favoritesOnly ? collection.live.works : []}
           knownCountOperators={knownCountOperators}
           favorite={favorites.has(detail.id)}
           onFavorite={() => toggleFavorite(detail.id)}
@@ -1538,9 +1424,6 @@ function OperatorDetail({
   scope,
   metric,
   years,
-  isDemo,
-  isCollected,
-  sourceWorks,
   knownCountOperators,
   favorite,
   onFavorite,
@@ -1553,9 +1436,6 @@ function OperatorDetail({
   scope: PlatformId;
   metric: Metric;
   years: number[];
-  isDemo: boolean;
-  isCollected: boolean;
-  sourceWorks: WorkObservation[];
   knownCountOperators?: Set<string>;
   favorite: boolean;
   onFavorite: () => void;
@@ -1576,11 +1456,6 @@ function OperatorDetail({
     knownCountOperators,
   )[0];
   const max = Math.max(1, ...Object.values(row.yearly).filter((v): v is number => v !== null));
-  const selectedRecords = records.filter(
-    (r) => r.operatorId === operator.id && r.platform === scope && years.includes(r.year),
-  );
-  const urls = [...new Set(selectedRecords.flatMap((r) => r.sourceUrls))];
-  const platforms = PLATFORMS.filter((p) => p.id === scope);
   return (
     <Modal title="干员观察档案" onClose={onClose} drawer>
       <div className="detail-identity">
@@ -1636,7 +1511,7 @@ function OperatorDetail({
           {metric === 'views' && scope !== 'pixiv'
             ? '观看量'
             : PIXIV_METRICS.find((option) => option.value === metric)!.label}
-          <span className="summary-tag">{isDemo ? '演示' : isCollected ? '真实样本' : '导入'}</span>
+          <span className="summary-tag">已采集</span>
         </span>
         <strong>{row.available ? compactNumber(row.total) : '未提供'}</strong>
         <p>{PLATFORMS.find((p) => p.id === scope)?.name} · 按当前选中年份汇总</p>
@@ -1657,97 +1532,6 @@ function OperatorDetail({
             <strong>{row.yearly[year] === null ? '—' : compactNumber(row.yearly[year])}</strong>
           </div>
         ))}
-      </div>
-      <h4 className="detail-section-title">{isDemo ? '去平台发现更多创作' : '记录来源'}</h4>
-      {isCollected && (
-        <div className="work-evidence">
-          {sourceWorks
-            .filter(
-              (work) =>
-                work.operatorIds.includes(operator.id) &&
-                work.platform === scope &&
-                years.includes(
-                  Number(
-                    new Intl.DateTimeFormat('en-US', {
-                      timeZone: 'Asia/Shanghai',
-                      year: 'numeric',
-                    }).format(new Date(work.publishedAt)),
-                  ),
-                ),
-            )
-            .slice(0, 12)
-            .map((work) => (
-              <a
-                key={`${work.platform}:${work.id}`}
-                href={work.url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <strong>
-                  {work.title}
-                  <ArrowUpRight size={12} aria-hidden="true" />
-                </strong>
-                <span>
-                  {PLATFORMS.find((p) => p.id === work.platform)?.name} ·{' '}
-                  {new Date(work.publishedAt).toLocaleDateString('zh-CN', {
-                    timeZone: 'Asia/Shanghai',
-                  })}
-                </span>
-                <small>
-                  点赞 {work.likes === null ? '未提供' : work.likes.toLocaleString('zh-CN')} · 观看{' '}
-                  {work.views === null ? '未提供' : work.views.toLocaleString('zh-CN')}
-                </small>
-                <small>
-                  统计于{' '}
-                  {new Date(work.observedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
-                </small>
-              </a>
-            ))}
-        </div>
-      )}
-      {isDemo ? (
-        <p className="muted detail-explanation">以下为外部搜索入口，不作为演示数值的来源。</p>
-      ) : (
-        <div className="record-sources">
-          {urls.length ? (
-            urls.slice(0, 8).map((url, i) => (
-              <a href={url} target="_blank" rel="noreferrer" key={url}>
-                来源 {i + 1}
-                <ArrowUpRight size={13} aria-hidden="true" />
-              </a>
-            ))
-          ) : (
-            <p className="muted">当前范围未提供来源记录。</p>
-          )}
-        </div>
-      )}
-      <div className="detail-platforms">
-        {platforms.map((p) => (
-          <a href={platformSearch(p.id, operator)} target="_blank" rel="noreferrer" key={p.id}>
-            <BrandIcon name={p.icon} size={15} />
-            {p.name}
-            <ArrowUpRight size={12} aria-hidden="true" />
-          </a>
-        ))}
-      </div>
-      <a
-        className="outline-button full-width prts-link"
-        href={operator.sourceUrl}
-        target="_blank"
-        rel="noreferrer"
-      >
-        查看 PRTS 完整档案
-        <ArrowUpRight size={14} aria-hidden="true" />
-      </a>
-      <div className="detail-footnote">
-        <Sparkles size={14} aria-hidden="true" />
-        <span>
-          {isDemo
-            ? '每一份热爱都值得记录，演示数值不代表真实热度。'
-            : isCollected
-              ? '仅覆盖已经采集并核验的作品；Pixiv 收藏数不当作点赞。真实指标可能随平台更新而变化。'
-              : '数据由导入文件提供，请结合来源及统计时间阅读。'}
-        </span>
       </div>
     </Modal>
   );

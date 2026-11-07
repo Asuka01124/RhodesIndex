@@ -165,7 +165,7 @@ export function FavoritesMatrixPage({
   const columns = useMemo(
     () =>
       [
-        { id: 'bilibili', name: '哔哩哔哩', metricLabel: '搜索结果数', icon: 'bilibili' },
+        { id: 'bilibili', name: '哔哩哔哩', metricLabel: '标签使用数', icon: 'bilibili' },
         {
           id: 'pixiv',
           name: 'Pixiv',

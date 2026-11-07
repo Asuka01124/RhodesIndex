@@ -1,5 +1,4 @@
-export type PlatformId =
-  'pixiv' | 'bilibili' | 'weibo' | 'youtube' | 'xiaohongshu' | 'douyin' | 'lofter';
+export type PlatformId = 'pixiv' | 'bilibili' | 'weibo' | 'xiaohongshu' | 'douyin' | 'lofter';
 export type Scope = 'all' | PlatformId;
 export type Metric = 'likes' | 'views' | 'bookmarks' | 'comments' | 'workCount';
 export type ViewMode = 'bars' | 'heatmap';
@@ -41,70 +40,6 @@ export interface HeatDataset {
   schemaVersion: 1;
   yearBasis: 'publication_year';
   records: HeatRecord[];
-}
-
-export type DataMode = 'collected' | 'demo' | 'imported';
-
-export interface WorkObservation {
-  id: string;
-  platform: PlatformId;
-  title: string;
-  url: string;
-  publishedAt: string;
-  likes: number | null;
-  views: number | null;
-  tags: string[];
-  operatorIds: string[];
-  matchBasis: 'exact_tag' | 'metadata_tag';
-  nativeMetrics: Record<string, number | null>;
-  observedAt: string;
-}
-
-export interface CollectionCoverage {
-  platform: PlatformId;
-  operatorId: string;
-  status: 'sampled' | 'no_results' | 'blocked' | 'failed' | 'exhausted';
-  candidates: number;
-  matched: number;
-  checkedAt: string;
-  note: string;
-}
-
-export interface LiveDataset extends HeatDataset {
-  metadata: {
-    kind: 'collected';
-    generatedAt: string | null;
-    coverage: 'partial';
-    workCount: number;
-    operatorCount: number;
-    platformCount: number;
-    methodology: string;
-  };
-  works: WorkObservation[];
-  coverage: CollectionCoverage[];
-}
-
-export interface CollectionJob {
-  id: string;
-  state: 'running' | 'completed' | 'cancelled' | 'failed';
-  startedAt: string;
-  finishedAt: string | null;
-  completed: number;
-  total: number;
-  current: string;
-  message: string;
-  errors: string[];
-  plan?: { platforms: PlatformId[]; operatorIds: string[]; limit: number };
-  completedKeys?: string[];
-  active?: string[];
-}
-
-export interface CollectorState {
-  available: boolean;
-  supportedPlatforms: PlatformId[];
-  job: CollectionJob | null;
-  loginWindows: PlatformId[];
-  snapshot: { workCount: number; operatorCount: number; generatedAt: string | null };
 }
 
 export type RarityTier = 3 | 4 | 5 | 6;

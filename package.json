@@ -7,9 +7,11 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --experimental-strip-types --test src/domain.test.ts src/pixiv.test.ts src/treemap.test.ts src/tagCounts.test.ts src/lofterCounts.test.ts src/douyinCounts.test.ts src/weiboCounts.test.ts src/snapshotResource.test.ts src/hiddenOperators.test.ts server/aggregate.test.ts server/storage.test.ts",
+    "test": "node --experimental-strip-types --test src/*.test.ts tools/*.test.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "data:publish": "node --experimental-strip-types tools/export-public-data.ts",
+    "build:pages": "tsc -b && vite build --base=/RhodesIndex/"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -25,5 +27,8 @@
     "prettier": "^3.6.2",
     "typescript": "~5.9.3",
     "vite": "^7.1.12"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

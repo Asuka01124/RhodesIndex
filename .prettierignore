@@ -8,3 +8,4 @@ package-lock.json
 public/data/live-heat.json*
 .playwright-mcp/
 .playwright-cli/
+public/data/

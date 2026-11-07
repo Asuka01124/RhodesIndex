@@ -7,8 +7,9 @@ import { validateWeiboCounts } from './weiboCounts';
 import { validateSklandCounts } from './sklandCounts';
 import { createSnapshotResource } from './snapshotResource';
 import { validatePixivSummary } from './pixiv';
+import { IS_LOCAL_DEV, snapshotUrls } from './publicUrls';
 
-const REFRESH_INTERVAL = 5000;
+const REFRESH_INTERVAL = IS_LOCAL_DEV ? 5000 : 300000;
 
 const SNAPSHOT_LABELS = {
   pixiv: 'Pixiv作品统计',
@@ -24,10 +25,10 @@ function makeTagResource<T>(
   validate: (value: unknown) => T,
 ) {
   return createSnapshotResource(async () => {
-    for (const url of [`/api/${platform}/tag-counts`, `/data/${platform}-tag-counts.json`]) {
+    for (const url of snapshotUrls(platform)) {
       try {
         const response = await fetch(url, {
-          cache: 'no-store',
+          cache: IS_LOCAL_DEV ? 'no-store' : 'no-cache',
           signal: AbortSignal.timeout(10000),
         });
         if (response.ok) return validate(await response.json());
@@ -35,7 +36,7 @@ function makeTagResource<T>(
         // 本地接口不可用时尝试静态快照。
       }
     }
-    throw new Error(`暂时无法读取${SNAPSHOT_LABELS[platform]}，请检查本地采集快照。`);
+    throw new Error('暂时无法读取' + SNAPSHOT_LABELS[platform] + '，请稍后重试。');
   });
 }
 
@@ -49,13 +50,16 @@ const tagResources = {
 };
 
 const sklandResource = createSnapshotResource(async () => {
-  const response = await fetch('/api/skland/tag-counts', {
-    cache: 'no-store',
-    signal: AbortSignal.timeout(10000),
-  });
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error('暂时无法读取森空岛的本地话题快照。');
-  return validateSklandCounts(await response.json());
+  for (const url of snapshotUrls('skland')) {
+    const response = await fetch(url, {
+      cache: IS_LOCAL_DEV ? 'no-store' : 'no-cache',
+      signal: AbortSignal.timeout(10000),
+    });
+    if (response.status === 404) continue;
+    if (!response.ok) throw new Error('暂时无法读取森空岛话题统计。');
+    return validateSklandCounts(await response.json());
+  }
+  return null;
 });
 
 const subscribeDisabled = () => () => {};
@@ -71,7 +75,9 @@ function useTagSnapshot<T>(
   useEffect(() => {
     if (!enabled) return;
     void resource.refresh(REFRESH_INTERVAL);
-    const timer = window.setInterval(() => void resource.refresh(), REFRESH_INTERVAL);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void resource.refresh(REFRESH_INTERVAL - 250);
+    }, REFRESH_INTERVAL);
     return () => window.clearInterval(timer);
   }, [resource, enabled]);
   return snapshot;
@@ -79,7 +85,8 @@ function useTagSnapshot<T>(
 
 export function preloadTagSnapshots() {
   const preload = () => {
-    for (const resource of Object.values(tagResources)) void resource.refresh(REFRESH_INTERVAL);
+    for (const resource of Object.values({ ...tagResources, skland: sklandResource }))
+      void resource.refresh(REFRESH_INTERVAL);
   };
   if (typeof window.requestIdleCallback === 'function') {
     const handle = window.requestIdleCallback(preload, { timeout: 1500 });

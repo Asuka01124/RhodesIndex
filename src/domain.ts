@@ -14,7 +14,6 @@ export const PLATFORM_IDS = [
   'pixiv',
   'bilibili',
   'weibo',
-  'youtube',
   'xiaohongshu',
   'douyin',
   'lofter',
