@@ -567,10 +567,11 @@ export default function App() {
     window.addEventListener('pointercancel', handleEnd);
     scrollEl?.addEventListener('scroll', handleScroll, { passive: true });
   }
-  function toggleFavorite(id: string) {
+  function toggleFavorite(id: string, sharedIds?: string[]) {
     const next = new Set(favorites);
-    if (next.has(id)) {
-      next.delete(id);
+    const selected = (sharedIds ?? [id]).filter((member) => next.has(member));
+    if (selected.length) {
+      selected.forEach((member) => next.delete(member));
       setToast('已移出我的关注');
     } else {
       next.add(id);

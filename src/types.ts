@@ -125,6 +125,19 @@ export interface RankedOperator {
   yearly: Record<number, number | null>;
 }
 
+export interface BilibiliTagComponent {
+  tag: string;
+  nativeTag: string;
+  tagId: number | null;
+  workCount: number | null;
+  status: string;
+  observedAt: string | null;
+  url: string | null;
+  apiSourceUrl: string;
+  missingReason: string | null;
+  updateError?: string | null;
+}
+
 export interface BilibiliTagCount {
   operatorId: string;
   tag: string;
@@ -137,8 +150,10 @@ export interface BilibiliTagCount {
   apiSourceUrl: string;
   missingReason: string | null;
   updateError?: string | null;
-  countBasis?: 'exact_tag_intersection' | 'search_result_total';
-  query?: string;
+  countBasis?: 'exact_tag_intersection' | 'search_result_total' | 'native_tag_use_sum';
+  query?: string | null;
+  components?: BilibiliTagComponent[];
+  sharedOperatorIds?: string[];
   searchTerms?: string[];
   lowerBound?: boolean;
   countedWindows?: number;
@@ -164,7 +179,9 @@ export interface BilibiliCountDataset {
     generatedAt: string | null;
     timeBasis: 'all_time_at_observation';
     methodology: string;
-    countBasis?: 'exact_tag_intersection' | 'search_result_total';
+    plannedCharacters?: number;
+    availableCharacters?: number;
+    countBasis?: 'exact_tag_intersection' | 'search_result_total' | 'native_tag_use_sum';
   };
 }
 

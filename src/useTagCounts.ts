@@ -12,7 +12,7 @@ const REFRESH_INTERVAL = 5000;
 
 const SNAPSHOT_LABELS = {
   pixiv: 'Pixiv作品统计',
-  bilibili: 'B站搜索结果数',
+  bilibili: 'B站单 TAG 使用数',
   lofter: 'LOFTER标签统计',
   douyin: '抖音话题播放量',
   xiaohongshu: '小红书话题浏览量',

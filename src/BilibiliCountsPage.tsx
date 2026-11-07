@@ -155,14 +155,14 @@ export function BilibiliCountInfo({
     >
       <div className="count-method">
         <h3>
-          {isLofter ? '中文标签的浏览与参与' : isDouyin ? '话题累计播放量' : '组合关键词搜索结果数'}
+          {isLofter ? '中文标签的浏览与参与' : isDouyin ? '话题累计播放量' : '单角色 TAG 使用数'}
         </h3>
         <p>
           {isLofter
             ? '展示已采集的标签浏览与参与原文；万、亿等缩写标为约数。参与数不冒充已去重作品总数。'
             : isDouyin
               ? '读取平台同名话题的原生累计播放量 view_count；它不是作品数或独立热度指数。阿米娅三个职业形态共用同一份统计，不重复相加。'
-              : '搜索角色中文名和明日方舟，联动角色再加对应作品名。直接读取搜索接口返回的数量；触顶时按不重叠时间段汇总，不再逐条核验视频标签。'}
+              : '直接读取角色中文主名 TAG 的使用数，不加明日方舟，联动角色也不加作品名。本体和异格合并显示，例如德克萨斯与缄默德克萨斯只排一行。'}
         </p>
         <p>
           不同标签可能包含同一件作品，不将各干员数量相加为平台总量。未取得的数据保留为空；采集中、受限或截断如实标注。
@@ -172,7 +172,7 @@ export function BilibiliCountInfo({
             ? '打开干员详情可查看标签、来源和采集时间。'
             : isDouyin
               ? '话题名称与干员主名相同，不代表内容全部属于该角色；常见名称可能混入其他内容。详情和CSV保留完整数值、话题ID、来源和采集时间。'
-              : '搜索可命中标题、简介等内容，不保证同时打齐标签，也不代表全站总量。详情保留实际搜索词、来源和采集时间。'}
+              : '合计为各形态 TAG 的使用次数，同一视频打了多个形态标签会重复计入，不是去重作品总数。点击数值可查看每个 TAG 的小计、来源和采集时间；未取得的形态不补零，已取得的小计标为下限。'}
         </p>
         {isDouyin && (
           <p>
@@ -226,7 +226,7 @@ export function BilibiliCountsPage({
   favorites: Set<string>;
   favoritesOnly: boolean;
   onClearFavorites: () => void;
-  onFavorite: (id: string) => void;
+  onFavorite: (id: string, sharedIds?: string[]) => void;
   searchRef: RefObject<HTMLInputElement | null>;
   filterRef: RefObject<HTMLButtonElement | null>;
   mobileToggleRef: RefObject<HTMLButtonElement | null>;
@@ -273,7 +273,7 @@ export function BilibiliCountsPage({
           ? '话题浏览量'
           : isWeibo
             ? WEIBO_METRIC_LABELS[weiboMetric]
-            : '搜索结果数';
+            : '标签使用数';
   const countRecords = useMemo<TagSummaryRow[]>(
     () =>
       isSkland
@@ -417,23 +417,14 @@ export function BilibiliCountsPage({
             ]),
           ]
         : [
-            [
-              '干员',
-              '职业',
-              '阵营',
-              '组合搜索结果数',
-              '统计范围',
-              '实际搜索词',
-              '来源',
-              '采集时间',
-            ],
+            ['干员', '职业', '阵营', '标签使用数', '统计范围', '采集 TAG', '来源', '采集时间'],
             ...ranked.map(({ operator: o, record: r }) => [
               o.name,
               o.profession,
               o.factions.join('、'),
               r?.workCount ?? null,
               r?.coverageNote ?? '未取得',
-              r?.query ?? '',
+              r?.searchTerms?.join('、') ?? '',
               r?.apiSourceUrl ?? '',
               r?.observedAt ?? '',
             ]),
@@ -575,7 +566,7 @@ export function BilibiliCountsPage({
                     ? `标签${countLabel}排行`
                     : isTopic
                       ? `${countLabel}排行`
-                      : '组合搜索结果数'}
+                      : '标签使用数排行'}
               </h1>
               <span className="chart-count">{ranked.length}</span>
             </div>
@@ -597,7 +588,12 @@ export function BilibiliCountsPage({
                   <kbd>/</kbd>
                 )}
               </label>
-              {isLofter || isDouyin || isXiaohongshu || isWeibo || isSkland ? (
+              {isLofter ||
+              isDouyin ||
+              isXiaohongshu ||
+              isWeibo ||
+              isSkland ||
+              platform === 'bilibili' ? (
                 <button
                   className="icon-button export-button"
                   aria-label={`${platformName}热度规则`}
@@ -741,7 +737,9 @@ export function BilibiliCountsPage({
                       <span>
                         <strong>
                           {o.name}
-                          {favorites.has(o.id) && (
+                          {(platform === 'bilibili'
+                            ? (r?.sharedOperatorIds ?? [o.id]).some((id) => favorites.has(id))
+                            : favorites.has(o.id)) && (
                             <Heart size={10} fill="currentColor" aria-label="已关注" />
                           )}
                         </strong>
@@ -812,8 +810,17 @@ export function BilibiliCountsPage({
           countLabel={countLabel}
           operator={detail}
           record={detailRecord}
-          favorite={favorites.has(detail.id)}
-          onFavorite={() => onFavorite(detail.id)}
+          favorite={
+            platform === 'bilibili'
+              ? (detailRecord?.sharedOperatorIds ?? [detail.id]).some((id) => favorites.has(id))
+              : favorites.has(detail.id)
+          }
+          onFavorite={() =>
+            onFavorite(
+              detail.id,
+              platform === 'bilibili' ? detailRecord?.sharedOperatorIds : undefined,
+            )
+          }
           onClose={() => setDetailId(null)}
         />
       )}
@@ -875,7 +882,7 @@ export function CountDetail({
         <span>
           {countLabel}
           <span className="summary-tag">
-            {platform === 'lofter' ? '平台累计显示' : isTopic ? '话题累计' : '组合搜索'}
+            {platform === 'lofter' ? '平台累计显示' : isTopic ? '话题累计' : '单角色 TAG'}
           </span>
         </span>
         <strong>
@@ -888,7 +895,7 @@ export function CountDetail({
           {isTopic && (!isSkland || r?.nativeTag) ? '#' : ''}
           {r?.nativeTag || (isXiaohongshu || isWeibo || isSkland ? '未取得' : o.name)}
         </p>
-        {platform === 'bilibili' && <p>搜索关键词：{r?.query || '尚未取得'}</p>}
+        {platform === 'bilibili' && <p>本体与异格合并，按各形态 TAG 使用数合计。</p>}
         {isTopic && !isWeibo && <p>话题 ID：{r?.topicId || '未取得'}</p>}
       </div>
       <dl className="count-detail-meta">
@@ -974,10 +981,27 @@ export function CountDetail({
           </div>
         </dl>
       )}
-      {platform === 'bilibili' && r?.countedWindows !== undefined && (
-        <p className="muted">
-          已取得 {r.countedWindows} 个时间范围的小计，待处理 {r.pendingWindows ?? 0} 个范围。
-        </p>
+      {platform === 'bilibili' && r?.components && (
+        <>
+          <h4 className="detail-section-title">各形态 TAG 使用数</h4>
+          <dl className="count-detail-meta">
+            {r.components.map((part) => (
+              <div key={part.tag}>
+                <dt>
+                  <a href={part.url || part.apiSourceUrl} target="_blank" rel="noreferrer">
+                    #{part.nativeTag}
+                  </a>
+                </dt>
+                <dd>
+                  {part.workCount === null ? '未取得' : part.workCount.toLocaleString('zh-CN')}
+                  <small className="muted"> · {dateLabel(part.observedAt)}</small>
+                  {part.workCount === null && part.missingReason && <p>{part.missingReason}</p>}
+                  {part.updateError && <p>{part.updateError}</p>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </>
       )}
       {r?.updateError && (
         <p className="count-message">最近刷新未成功，保留上次的数量和采集时间：{r.updateError}</p>
@@ -990,7 +1014,7 @@ export function CountDetail({
               ? '打开平台标签页'
               : isTopic
                 ? '查看平台原始汇总'
-                : '打开对应搜索'}
+                : '打开本体标签页'}
             <ArrowUpRight size={13} aria-hidden="true" />
           </a>
         )}
@@ -1012,8 +1036,8 @@ export function CountDetail({
                 ? '浏览、发帖和讨论分别取自话题详情的原生累计字段。'
                 : isWeibo
                   ? '原创人数、讨论次数和阅读次数均来自话题页“数据总览”；万、亿为约数，缺失保留为空，不能当作微博全站热度。'
-                  : '数量来自组合关键词搜索，可包含标题或简介命中，并非严格标签交集。未完成分段或触顶时仅展示下限。'}{' '}
-        同一作品可能出现在多个干员标签中，不直接相加。
+                  : '读取各形态单 TAG 的原生 count.use，本体与异格合并相加。标签之间未去重；同名内容也可能计入。缺失形态留空，部分小计标为下限。'}{' '}
+        不同角色可能包含同一作品，不将角色数值相加为平台总量。
       </p>
     </Modal>
   );
