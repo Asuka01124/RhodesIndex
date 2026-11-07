@@ -5,7 +5,7 @@ import { EMPTY_FILTERS, matchesOperator, YEARS } from './domain';
 import { PROFESSIONS } from './data';
 import { Segmented } from './ui';
 import { collaborationRoster } from './collaborations';
-import { PIXIV_RATINGS, PIXIV_WORK_TYPES } from './pixiv';
+import { PIXIV_RATINGS, PIXIV_WORK_TYPES, PIXIV_YEAR_WORK_TYPES } from './pixiv';
 
 export function FilterPanel({
   filters,
@@ -16,6 +16,7 @@ export function FilterPanel({
   showYears = true,
   includeCollaborations = true,
   showPixivFilters = false,
+  pixivAnnualCounts = false,
 }: {
   filters: Filters;
   years: number[];
@@ -25,6 +26,7 @@ export function FilterPanel({
   showYears?: boolean;
   includeCollaborations?: boolean;
   showPixivFilters?: boolean;
+  pixivAnnualCounts?: boolean;
 }) {
   const [draft, setDraft] = useState<Filters>({ ...filters });
   const [first, setFirst] = useState(years.length ? Math.min(...years) : 2019);
@@ -88,38 +90,48 @@ export function FilterPanel({
         </button>
       </div>
       <div className="filter-body">
+        {showPixivFilters && pixivAnnualCounts && (
+          <p>绘画包含插画、漫画和动图；年度作品数暂不支持分级筛选。</p>
+        )}
         {showPixivFilters &&
           (
             [
-              { key: 'workTypes', label: '作品类型', all: '全部类型', options: PIXIV_WORK_TYPES },
+              {
+                key: 'workTypes',
+                label: '作品类型',
+                all: '全部类型',
+                options: pixivAnnualCounts ? PIXIV_YEAR_WORK_TYPES : PIXIV_WORK_TYPES,
+              },
               { key: 'ratings', label: '作品分级', all: '全部分级', options: PIXIV_RATINGS },
             ] as const
-          ).map(({ key, label, all, options }) => (
-            <fieldset key={key}>
-              <legend>
-                {label} <small>可多选</small>
-              </legend>
-              <div className="filter-chips">
-                <button
-                  className={!draft[key]?.length ? 'active' : ''}
-                  aria-pressed={!draft[key]?.length}
-                  onClick={() => setDraft({ ...draft, [key]: [] })}
-                >
-                  {all}
-                </button>
-                {options.map((value) => (
+          )
+            .filter(({ key }) => !pixivAnnualCounts || key !== 'ratings')
+            .map(({ key, label, all, options }) => (
+              <fieldset key={key}>
+                <legend>
+                  {label} <small>可多选</small>
+                </legend>
+                <div className="filter-chips">
                   <button
-                    key={value}
-                    className={draft[key]?.includes(value) ? 'active' : ''}
-                    aria-pressed={draft[key]?.includes(value) ?? false}
-                    onClick={() => toggle(key, value)}
+                    className={!draft[key]?.length ? 'active' : ''}
+                    aria-pressed={!draft[key]?.length}
+                    onClick={() => setDraft({ ...draft, [key]: [] })}
                   >
-                    {value}
+                    {all}
                   </button>
-                ))}
-              </div>
-            </fieldset>
-          ))}
+                  {options.map((value) => (
+                    <button
+                      key={value}
+                      className={draft[key]?.includes(value) ? 'active' : ''}
+                      aria-pressed={draft[key]?.includes(value) ?? false}
+                      onClick={() => toggle(key, value)}
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            ))}
         <fieldset>
           <legend>
             干员职业 <small>可多选</small>

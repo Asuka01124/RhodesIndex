@@ -9,6 +9,22 @@ export const PIXIV_METRICS: { value: Metric; label: string }[] = [
 ];
 export const PIXIV_WORK_TYPES = ['插画', '漫画', '动图', '小说', '未标注'];
 export const PIXIV_RATINGS = ['全年龄', 'R-18', 'R-18G', '未标注'];
+export const PIXIV_YEAR_WORK_TYPES = ['绘画', '小说'];
+
+export function effectivePixivFilters(filters: Filters, annualCounts: boolean): Filters {
+  return annualCounts
+    ? {
+        ...filters,
+        workTypes: filters.workTypes?.filter((type) => PIXIV_YEAR_WORK_TYPES.includes(type)),
+        ratings: [],
+      }
+    : filters.workTypes?.some((type) => !PIXIV_WORK_TYPES.includes(type))
+      ? {
+          ...filters,
+          workTypes: filters.workTypes.filter((type) => PIXIV_WORK_TYPES.includes(type)),
+        }
+      : filters;
+}
 
 export interface PixivSummary {
   schemaVersion: 1;
@@ -22,6 +38,10 @@ export interface PixivSummary {
     workCount: number;
     countOperatorIds?: string[];
     countWorkCount?: number;
+    countMethod?: 'chinese_base_tag_year_total';
+    countYearBasis?: 'pixiv_jst_search_year';
+    countYears?: number[];
+    countGeneratedAt?: string;
     unknownYearCounts?: Record<string, number>;
   };
 }
@@ -58,6 +78,27 @@ export function validatePixivSummary(value: unknown): PixivSummary {
   ) {
     throw new Error('Pixiv 作品数快照格式无效。');
   }
+  const annualCounts = data.metadata.countMethod === 'chinese_base_tag_year_total';
+  if (data.metadata.countMethod !== undefined && !annualCounts) {
+    throw new Error('Pixiv 作品数统计口径无效。');
+  }
+  if (
+    annualCounts &&
+    (data.metadata.countYearBasis !== 'pixiv_jst_search_year' ||
+      !Array.isArray(data.metadata.countYears) ||
+      !data.metadata.countYears.length ||
+      data.metadata.countYears.some(
+        (year, i, years) =>
+          !Number.isInteger(year) || year !== 2019 + i || year > new Date().getFullYear(),
+      ) ||
+      !Number.isFinite(Date.parse(data.metadata.countGeneratedAt ?? '')) ||
+      data.countRecords === undefined ||
+      new Set(data.metadata.countOperatorIds).size !== data.metadata.countOperatorIds?.length ||
+      data.metadata.countWorkCount !== undefined ||
+      Object.keys(data.metadata.unknownYearCounts ?? {}).length > 0)
+  ) {
+    throw new Error('Pixiv 年度原生数量覆盖信息无效。');
+  }
   const completed = new Set(data.metadata.operatorIds);
   const keys = new Set<string>();
   const counted = new Set(data.metadata.countOperatorIds ?? data.metadata.operatorIds);
@@ -82,8 +123,18 @@ export function validatePixivSummary(value: unknown): PixivSummary {
           (!Number.isSafeInteger(record.workCount) || record.workCount < 0)) ||
         !(mode === 'counts' ? counted : completed).has(record.operatorId) ||
         !Number.isInteger(record.year) ||
-        !PIXIV_WORK_TYPES.includes(record.workType ?? '') ||
-        !PIXIV_RATINGS.includes(record.rating ?? '') ||
+        !(mode === 'counts' && annualCounts ? PIXIV_YEAR_WORK_TYPES : PIXIV_WORK_TYPES).includes(
+          record.workType ?? '',
+        ) ||
+        !(mode === 'counts' && annualCounts ? ['全部分级'] : PIXIV_RATINGS).includes(
+          record.rating ?? '',
+        ) ||
+        (mode === 'counts' &&
+          annualCounts &&
+          (!data.metadata.countYears?.includes(record.year) ||
+            ['likes', 'views', 'bookmarks', 'comments'].some(
+              (metric) => record[metric as keyof HeatRecord] !== null,
+            ))) ||
         !Array.isArray(record.sourceUrls) ||
         !record.sourceUrls.length ||
         record.sourceUrls.some(
@@ -110,6 +161,13 @@ export function validatePixivSummary(value: unknown): PixivSummary {
       if (keys.has(key)) throw new Error('Pixiv 统计分组重复。');
       keys.add(key);
     }
+  }
+  if (
+    annualCounts &&
+    data.countRecords?.length !==
+      counted.size * data.metadata.countYears!.length * PIXIV_YEAR_WORK_TYPES.length
+  ) {
+    throw new Error('Pixiv 年度数量缺少干员、年份或作品种类。');
   }
   return data;
 }

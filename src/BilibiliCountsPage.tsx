@@ -9,6 +9,8 @@ import {
   BarChart3,
   Check,
   ChevronDown,
+  Eye,
+  EyeOff,
   Grid2X2,
   Heart,
   Info,
@@ -55,6 +57,8 @@ import {
   sklandRoster,
   type SklandMetric,
 } from './sklandCounts';
+import { HiddenOperatorsBar } from './HiddenOperatorsBar';
+import { isOperatorHidden } from './hiddenOperators';
 
 const dateLabel = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚未取得';
@@ -203,6 +207,10 @@ export function BilibiliCountsPage({
   favoritesOnly,
   onClearFavorites,
   onFavorite,
+  hiddenIds = [],
+  onToggleHide,
+  onRestoreHidden,
+  onClearHidden,
   searchRef,
   filterRef,
   mobileToggleRef,
@@ -227,6 +235,10 @@ export function BilibiliCountsPage({
   favoritesOnly: boolean;
   onClearFavorites: () => void;
   onFavorite: (id: string, sharedIds?: string[]) => void;
+  hiddenIds?: readonly string[];
+  onToggleHide?: (id: string, sharedIds?: string[]) => void;
+  onRestoreHidden?: (id: string) => void;
+  onClearHidden?: () => void;
   searchRef: RefObject<HTMLInputElement | null>;
   filterRef: RefObject<HTMLButtonElement | null>;
   mobileToggleRef: RefObject<HTMLButtonElement | null>;
@@ -309,6 +321,7 @@ export function BilibiliCountsPage({
   const [detailId, setDetailId] = useState<string | null>(null);
   const [exported, setExported] = useState(false);
   const deferredQuery = useDeferredValue(query);
+  const hiddenSet = useMemo(() => new Set(hiddenIds), [hiddenIds]);
   const ranked = useMemo(
     () =>
       rankTagCounts(
@@ -331,6 +344,7 @@ export function BilibiliCountsPage({
         deferredQuery,
         sort,
         favoritesOnly ? favorites : undefined,
+        hiddenSet,
       ),
     [
       operators,
@@ -348,6 +362,7 @@ export function BilibiliCountsPage({
       sort,
       favoritesOnly,
       favorites,
+      hiddenSet,
     ],
   );
   const rows = showAll ? ranked : ranked.slice(0, INITIAL_VISIBLE);
@@ -369,6 +384,7 @@ export function BilibiliCountsPage({
     sklandMetric,
     platform,
     hideAmbiguous,
+    hiddenSet,
   ]);
   useEffect(() => {
     if (!exported) return;
@@ -674,6 +690,14 @@ export function BilibiliCountsPage({
               </button>
             </div>
           )}
+          {hiddenIds.length > 0 && onRestoreHidden && onClearHidden && (
+            <HiddenOperatorsBar
+              hiddenIds={hiddenIds}
+              operators={operators}
+              onRestore={onRestoreHidden}
+              onRestoreAll={onClearHidden}
+            />
+          )}
           {isSkland && !skland.data ? (
             <div className="empty-state">
               <BrandIcon name="skland" size={30} />
@@ -695,7 +719,15 @@ export function BilibiliCountsPage({
               <Search size={30} aria-hidden="true" />
               <h3>暂时没有匹配的干员</h3>
               <p>试试其他名称，或减少筛选条件。</p>
-              <button className="outline-button" onClick={reset}>
+              <button
+                className="outline-button"
+                onClick={() => {
+                  reset();
+                  if (!activeFilters && !query && !favoritesOnly && hiddenIds.length > 0) {
+                    onClearHidden?.();
+                  }
+                }}
+              >
                 查看全部干员
                 <ArrowRight size={14} aria-hidden="true" />
               </button>
@@ -732,24 +764,37 @@ export function BilibiliCountsPage({
                     <span className={`rank-number ${i < 3 ? 'top-rank' : ''}`}>
                       {r?.workCount === null || !r ? '—' : String(i + 1).padStart(2, '0')}
                     </span>
-                    <button className="operator-button" onClick={() => setDetailId(o.id)}>
-                      <img src={o.avatar} alt="" width={38} height={38} loading="lazy" />
-                      <span>
-                        <strong>
-                          {o.name}
-                          {(platform === 'bilibili'
-                            ? (r?.sharedOperatorIds ?? [o.id]).some((id) => favorites.has(id))
-                            : favorites.has(o.id)) && (
-                            <Heart size={10} fill="currentColor" aria-label="已关注" />
-                          )}
-                        </strong>
-                        <small>
-                          {o.profession}
-                          <span className="name-dot">·</span>
-                          {o.factions[0] || '未知阵营'}
-                        </small>
-                      </span>
-                    </button>
+                    <div className="operator-cell">
+                      <button className="operator-button" onClick={() => setDetailId(o.id)}>
+                        <img src={o.avatar} alt="" width={38} height={38} loading="lazy" />
+                        <span>
+                          <strong>
+                            {o.name}
+                            {(platform === 'bilibili'
+                              ? (r?.sharedOperatorIds ?? [o.id]).some((id) => favorites.has(id))
+                              : favorites.has(o.id)) && (
+                              <Heart size={10} fill="currentColor" aria-label="已关注" />
+                            )}
+                          </strong>
+                          <small>
+                            {o.profession}
+                            <span className="name-dot">·</span>
+                            {o.factions[0] || '未知阵营'}
+                          </small>
+                        </span>
+                      </button>
+                      {onToggleHide && (
+                        <button
+                          type="button"
+                          className="row-hide-button"
+                          aria-label={`隐藏${o.name}`}
+                          title={`隐藏${o.name}`}
+                          onClick={() => onToggleHide(o.id, r?.sharedOperatorIds)}
+                        >
+                          <EyeOff size={14} aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
                     <div className="bar-plot" aria-hidden="true">
                       {r?.workCount !== null && r && (
                         <div
@@ -817,6 +862,12 @@ export function BilibiliCountsPage({
               platform === 'bilibili' ? detailRecord?.sharedOperatorIds : undefined,
             )
           }
+          hidden={isOperatorHidden(hiddenSet, detail.id, detailRecord?.sharedOperatorIds)}
+          onToggleHide={
+            onToggleHide
+              ? () => onToggleHide(detail.id, detailRecord?.sharedOperatorIds)
+              : undefined
+          }
           onClose={() => setDetailId(null)}
         />
       )}
@@ -831,6 +882,8 @@ export function CountDetail({
   record: r,
   favorite,
   onFavorite,
+  hidden = false,
+  onToggleHide,
   onClose,
 }: {
   platform: CountPlatform;
@@ -839,6 +892,8 @@ export function CountDetail({
   record: TagSummaryRow | undefined;
   favorite: boolean;
   onFavorite: () => void;
+  hidden?: boolean;
+  onToggleHide?: () => void;
   onClose: () => void;
 }) {
   const isXiaohongshu = platform === 'xiaohongshu';
@@ -866,14 +921,30 @@ export function CountDetail({
           <span key={f}>{f}</span>
         ))}
       </div>
-      <button
-        className={`outline-button full-width favorite-button ${favorite ? 'is-favorite' : ''}`}
-        aria-pressed={favorite}
-        onClick={onFavorite}
-      >
-        <Heart size={16} fill={favorite ? 'currentColor' : 'none'} aria-hidden="true" />
-        {favorite ? '已关注 · 点击取消' : '关注这位干员'}
-      </button>
+      <div className="detail-actions">
+        <button
+          className={`outline-button full-width favorite-button ${favorite ? 'is-favorite' : ''}`}
+          aria-pressed={favorite}
+          onClick={onFavorite}
+        >
+          <Heart size={16} fill={favorite ? 'currentColor' : 'none'} aria-hidden="true" />
+          {favorite ? '已关注 · 点击取消' : '关注这位干员'}
+        </button>
+        {onToggleHide && (
+          <button
+            className={`outline-button full-width hide-operator-button ${hidden ? 'is-hidden-operator' : ''}`}
+            aria-pressed={hidden}
+            onClick={onToggleHide}
+          >
+            {hidden ? (
+              <Eye size={16} aria-hidden="true" />
+            ) : (
+              <EyeOff size={16} aria-hidden="true" />
+            )}
+            {hidden ? '已隐藏 · 点击恢复' : '隐藏这位干员'}
+          </button>
+        )}
+      </div>
       <div className="detail-total">
         <span>
           {countLabel}

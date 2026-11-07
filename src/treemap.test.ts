@@ -4,7 +4,11 @@ import { buildEntries, buildTagCountEntries, squarify, TREEMAP_LIMIT } from './t
 import type { RankedTagCountRow } from './treemap.ts';
 import type { Operator, RankedOperator } from './types.ts';
 
-function row(id: string, profession: string, yearly: Record<number, number | null>): RankedOperator {
+function row(
+  id: string,
+  profession: string,
+  yearly: Record<number, number | null>,
+): RankedOperator {
   const values = Object.values(yearly).filter((v): v is number => v !== null);
   return {
     operator: { id, name: id, profession } as Operator,
@@ -30,9 +34,7 @@ test('squarify fills the container, keeps monotonic areas, and avoids thin slive
   for (let i = 0; i < rects.length; i++) {
     const r = rects[i];
     assert.ok(r.w >= 90 && r.h >= 90, `tile ${i} too thin: ${r.w}x${r.h}`);
-    assert.ok(
-      r.x >= -1e-9 && r.y >= -1e-9 && r.x + r.w <= 1000 + 1e-6 && r.y + r.h <= 380 + 1e-6,
-    );
+    assert.ok(r.x >= -1e-9 && r.y >= -1e-9 && r.x + r.w <= 1000 + 1e-6 && r.y + r.h <= 380 + 1e-6);
     if (i > 0) {
       assert.ok(rects[i - 1].w * rects[i - 1].h >= r.w * r.h - 1e-6);
     }

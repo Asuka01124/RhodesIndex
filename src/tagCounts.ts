@@ -98,6 +98,7 @@ export function rankTagCounts<T extends BilibiliTagCount>(
   query: string,
   sort: 'asc' | 'desc' = 'desc',
   favorites?: Set<string>,
+  hidden?: ReadonlySet<string>,
 ) {
   const index = new Map(records.map((row) => [row.operatorId, row]));
   const mergedMembers = new Set(
@@ -110,6 +111,10 @@ export function rankTagCounts<T extends BilibiliTagCount>(
     .filter((o) => !mergedMembers.has(o.id))
     .filter((o) => {
       const row = index.get(o.id);
+      if (hidden?.size) {
+        const shared = row?.sharedOperatorIds ?? [o.id];
+        if (shared.some((id) => hidden.has(id))) return false;
+      }
       const members =
         row?.countBasis === 'native_tag_use_sum'
           ? (row.sharedOperatorIds ?? [o.id])

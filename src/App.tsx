@@ -11,6 +11,8 @@ import {
   Check,
   ChevronDown,
   Database,
+  Eye,
+  EyeOff,
   Grid2X2,
   Heart,
   Info,
@@ -52,7 +54,7 @@ import { FilterPanel } from './Filters';
 import { DataPanel } from './DataPanel';
 import { useLiveData } from './useLiveData';
 import { preloadTagSnapshots, usePixivSummary } from './useTagCounts';
-import { filterPixivRecords, PIXIV_METRICS } from './pixiv';
+import { effectivePixivFilters, filterPixivRecords, PIXIV_METRICS } from './pixiv';
 import { SidebarHighlight } from './SidebarHighlight';
 import { BilibiliCountsPage, BilibiliCountInfo } from './BilibiliCountsPage';
 import { CollaborationToggle } from './CollaborationToggle';
@@ -60,6 +62,15 @@ import { collaborationRoster } from './collaborations';
 import { RaritySlider } from './RaritySlider';
 import { TreemapHeatmap } from './TreemapHeatmap';
 import { FavoritesMatrixPage } from './FavoritesMatrixPage';
+import { HiddenOperatorsBar } from './HiddenOperatorsBar';
+import {
+  clearHiddenOperators,
+  type HiddenByPlatform,
+  isOperatorHidden,
+  normalizeHiddenByPlatform,
+  restoreHiddenOperator,
+  toggleHiddenOperator,
+} from './hiddenOperators';
 
 const initialParams = new URLSearchParams(window.location.search);
 type PageScope = PlatformId | 'skland';
@@ -159,6 +170,9 @@ export default function App() {
     const stored = readLocal<unknown>('favorites', []);
     return new Set(Array.isArray(stored) ? stored.filter((x) => typeof x === 'string') : []);
   });
+  const [hiddenByPlatform, setHiddenByPlatform] = useState<HiddenByPlatform>(() =>
+    normalizeHiddenByPlatform(readLocal<unknown>('hiddenOperators', {})),
+  );
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [pageTransitionId, setPageTransitionId] = useState(0);
   const [pageEntering, setPageEntering] = useState(true);
@@ -211,6 +225,15 @@ export default function App() {
   const metricUnit = metric === 'workCount' ? '件' : '次';
   const isDemo = sourceMode === 'demo';
   const isCollected = sourceMode === 'collected';
+  const annualCounts =
+    isCollected &&
+    scope === 'pixiv' &&
+    metric === 'workCount' &&
+    pixiv.data?.metadata.countMethod === 'chinese_base_tag_year_total';
+  const pixivFilters = useMemo(
+    () => effectivePixivFilters(filters, annualCounts),
+    [filters, annualCounts],
+  );
   const modeLabel = isDemo ? '演示' : isCollected ? '真实样本' : '导入';
 
   useEffect(() => {
@@ -269,12 +292,15 @@ export default function App() {
             : (pixiv.data?.records ?? [])
           : collection.live.records;
   const records = useMemo(
-    () => (scope === 'pixiv' ? filterPixivRecords(sourceRecords, filters) : sourceRecords),
-    [scope, sourceRecords, filters],
+    () => (scope === 'pixiv' ? filterPixivRecords(sourceRecords, pixivFilters) : sourceRecords),
+    [scope, sourceRecords, pixivFilters],
   );
   const visibleOperators = useMemo(
-    () => collaborationRoster(operators, includeCollaborations),
-    [operators, includeCollaborations],
+    () =>
+      collaborationRoster(operators, includeCollaborations).filter(
+        (operator) => !annualCounts || pixiv.data?.metadata.countOperatorIds?.includes(operator.id),
+      ),
+    [operators, includeCollaborations, annualCounts, pixiv.data],
   );
   const activeYears = view === 'heatmap' ? YEARS : years;
   const knownCountOperators = useMemo(
@@ -290,6 +316,11 @@ export default function App() {
       ),
     [isCollected, scope, metric, favoritesOnly, pixiv.data],
   );
+  const currentHiddenIds = useMemo(
+    () => (favoritesOnly ? [] : (hiddenByPlatform[pageScope] ?? [])),
+    [favoritesOnly, hiddenByPlatform, pageScope],
+  );
+  const currentHiddenSet = useMemo(() => new Set(currentHiddenIds), [currentHiddenIds]);
   const ranked = useMemo(
     () =>
       rankOperators(
@@ -303,6 +334,7 @@ export default function App() {
         sort,
         favoritesOnly ? favorites : undefined,
         knownCountOperators,
+        currentHiddenSet,
       ),
     [
       visibleOperators,
@@ -316,12 +348,13 @@ export default function App() {
       favoritesOnly,
       knownCountOperators,
       favorites,
+      currentHiddenSet,
     ],
   );
   const availableRows = useMemo(() => ranked.filter((r) => r.available), [ranked]);
   const pageRows = showAll ? ranked : ranked.slice(0, INITIAL_VISIBLE);
   const maxValue = Math.max(1, ...availableRows.map((r) => r.total));
-  const activeFilters = filterCount(filters, scope === 'pixiv');
+  const activeFilters = filterCount(pixivFilters, scope === 'pixiv');
   const hasData = availableRows.length > 0;
   const closeFilters = useCallback(() => {
     setFilterOpen(false);
@@ -341,6 +374,7 @@ export default function App() {
     favoritesOnly,
     sort,
     sourceMode,
+    currentHiddenSet,
   ]);
   useEffect(() => {
     const params = new URLSearchParams();
@@ -579,6 +613,30 @@ export default function App() {
     setFavorites(next);
     writeLocal('favorites', [...next]);
   }
+  function handleToggleHide(platformKey: string, id: string, sharedIds?: string[]) {
+    const opName = operators.find((o) => o.id === id)?.name;
+    const { next, hidden } = toggleHiddenOperator(hiddenByPlatform, platformKey, id, sharedIds);
+    setHiddenByPlatform(next);
+    writeLocal('hiddenOperators', next);
+    if (opName) {
+      setToast(hidden ? `已隐藏「${opName}」` : `已恢复显示「${opName}」`);
+    }
+  }
+  function handleRestoreHidden(platformKey: string, id: string) {
+    const opName = operators.find((o) => o.id === id)?.name;
+    const next = restoreHiddenOperator(hiddenByPlatform, platformKey, id);
+    setHiddenByPlatform(next);
+    writeLocal('hiddenOperators', next);
+    if (opName) {
+      setToast(`已恢复显示「${opName}」`);
+    }
+  }
+  function handleClearHidden(platformKey: string) {
+    const next = clearHiddenOperators(hiddenByPlatform, platformKey);
+    setHiddenByPlatform(next);
+    writeLocal('hiddenOperators', next);
+    setToast('已恢复全部隐藏干员');
+  }
   function setDataMode(mode: DataMode) {
     setSourceMode(mode);
     writeLocal('sourceMode', mode);
@@ -650,26 +708,37 @@ export default function App() {
   }
 
   const operatorButton = (row: RankedOperator) => (
-    <button
-      className="operator-button"
-      onClick={() => setDetail(row.operator)}
-      aria-label={`查看${row.operator.name}详情`}
-    >
-      <img src={row.operator.avatar} alt="" width={42} height={42} loading="lazy" />
-      <span>
-        <strong>
-          {row.operator.name}
-          {favorites.has(row.operator.id) && (
-            <Heart size={10} fill="currentColor" aria-label="已关注" />
-          )}
-        </strong>
-        <small>
-          {row.operator.profession}
-          <span className="name-dot">·</span>
-          {row.operator.factions[0] || '未知阵营'}
-        </small>
-      </span>
-    </button>
+    <div className="operator-cell">
+      <button
+        className="operator-button"
+        onClick={() => setDetail(row.operator)}
+        aria-label={`查看${row.operator.name}详情`}
+      >
+        <img src={row.operator.avatar} alt="" width={42} height={42} loading="lazy" />
+        <span>
+          <strong>
+            {row.operator.name}
+            {favorites.has(row.operator.id) && (
+              <Heart size={10} fill="currentColor" aria-label="已关注" />
+            )}
+          </strong>
+          <small>
+            {row.operator.profession}
+            <span className="name-dot">·</span>
+            {row.operator.factions[0] || '未知阵营'}
+          </small>
+        </span>
+      </button>
+      <button
+        type="button"
+        className="row-hide-button"
+        aria-label={`隐藏${row.operator.name}`}
+        title={`隐藏${row.operator.name}`}
+        onClick={() => handleToggleHide(scope, row.operator.id)}
+      >
+        <EyeOff size={14} aria-hidden="true" />
+      </button>
+    </div>
   );
 
   return (
@@ -851,6 +920,10 @@ export default function App() {
               favoritesOnly={favoritesOnly}
               onClearFavorites={() => setFavoritesOnly(false)}
               onFavorite={toggleFavorite}
+              hiddenIds={currentHiddenIds}
+              onToggleHide={(id, sharedIds) => handleToggleHide(pageScope, id, sharedIds)}
+              onRestoreHidden={(id) => handleRestoreHidden(pageScope, id)}
+              onClearHidden={() => handleClearHidden(pageScope)}
               searchRef={searchRef}
               filterRef={filterRef}
               mobileToggleRef={mobileToggleRef}
@@ -954,11 +1027,12 @@ export default function App() {
                       </button>
                       {filterOpen && (
                         <FilterPanel
-                          filters={filters}
+                          filters={pixivFilters}
                           includeCollaborations={includeCollaborations}
                           showPixivFilters={scope === 'pixiv'}
+                          pixivAnnualCounts={annualCounts}
                           years={years}
-                          operators={operators}
+                          operators={annualCounts ? visibleOperators : operators}
                           onClose={closeFilters}
                           onApply={(nextFilters, nextYears) => {
                             setFilters(nextFilters);
@@ -1114,7 +1188,7 @@ export default function App() {
                       )}
                       {scope === 'pixiv' &&
                         (['workTypes', 'ratings'] as const).flatMap((key) =>
-                          (filters[key] ?? []).map((value) => (
+                          (pixivFilters[key] ?? []).map((value) => (
                             <button
                               key={`${key}-${value}`}
                               onClick={() =>
@@ -1133,6 +1207,14 @@ export default function App() {
                         清除筛选
                       </button>
                     </div>
+                  )}
+                  {currentHiddenIds.length > 0 && (
+                    <HiddenOperatorsBar
+                      hiddenIds={currentHiddenIds}
+                      operators={operators}
+                      onRestore={(id) => handleRestoreHidden(scope, id)}
+                      onRestoreAll={() => handleClearHidden(scope)}
+                    />
                   )}
 
                   {!operators.length ? (
@@ -1174,7 +1256,20 @@ export default function App() {
                           ? '打开干员详情，点击“关注干员”即可加入这里。'
                           : '试试其他名称，或减少一些筛选条件。'}
                       </p>
-                      <button className="outline-button" onClick={resetAll}>
+                      <button
+                        className="outline-button"
+                        onClick={() => {
+                          resetAll();
+                          if (
+                            !activeFilters &&
+                            !query &&
+                            !favoritesOnly &&
+                            currentHiddenIds.length > 0
+                          ) {
+                            handleClearHidden(scope);
+                          }
+                        }}
+                      >
                         查看全部干员
                         <ArrowRight size={14} aria-hidden="true" />
                       </button>
@@ -1334,17 +1429,33 @@ export default function App() {
         (scope === 'pixiv' ? (
           <Modal title="Pixiv 统计规则" onClose={() => setDataOpen(false)}>
             <div className="count-method">
-              <h3>按角色标签统计作品与互动</h3>
-              <p>作品按 ID 去重，按发布时间统计每年数量。作品类型与分级可以组合筛选。</p>
-              <p>按作品发布年份分组，互动量为采集时累计值。未取得的指标保留为空。</p>
-              <p>收藏和评论若有缺失，仅累计已经取得的数值。</p>
-              <p>
-                作品数只需完成标签列表，不等待互动指标；浏览、点赞等在详情补齐后分别接入。受限、失败或未取完的范围保留为空。
-              </p>
-              <p>全年龄、R-18、R-18G 来自平台原生分级，未返回分级的作品归入“未标注”。</p>
-              <p>
-                缺少发布时间的作品列为年份未知，不编造年份，不计入分年榜单。每组保留一条代表来源，完整作品记录保留在采集数据库。
-              </p>
+              {annualCounts ? (
+                <>
+                  <h3>中文本体标签的年度作品数</h3>
+                  <p>
+                    按角色的中文本体标签统计，例如
+                    #黍。异格标签不单独统计，本体标签下仍可能包含异格作品。
+                  </p>
+                  <p>
+                    按年份展示账号可见的标签搜索结果数，以日本时间归年。绘画包含插画、漫画和动图，小说单独统计；暂不支持分级筛选。
+                  </p>
+                  <p>浏览、点赞、收藏和评论来自另一批逐件采集的数据，覆盖范围与作品数不同。</p>
+                </>
+              ) : (
+                <>
+                  <h3>按角色标签统计作品与互动</h3>
+                  <p>作品按 ID 去重，按发布时间统计每年数量。作品类型与分级可以组合筛选。</p>
+                  <p>按作品发布年份分组，互动量为采集时累计值。未取得的指标保留为空。</p>
+                  <p>收藏和评论若有缺失，仅累计已经取得的数值。</p>
+                  <p>
+                    作品数只需完成标签列表，不等待互动指标；浏览、点赞等在详情补齐后分别接入。受限、失败或未取完的范围保留为空。
+                  </p>
+                  <p>全年龄、R-18、R-18G 来自平台原生分级，未返回分级的作品归入“未标注”。</p>
+                  <p>
+                    缺少发布时间的作品列为年份未知，不编造年份，不计入分年榜单。每组保留一条代表来源，完整作品记录保留在采集数据库。
+                  </p>
+                </>
+              )}
               <p>同名话题仍影响排名，请自行甄别</p>
             </div>
           </Modal>
@@ -1373,7 +1484,11 @@ export default function App() {
                   pixivMetric === 'workCount'
                     ? (pixiv.data?.countRecords ?? pixiv.data?.records ?? [])
                     : (pixiv.data?.records ?? []),
-                  filters,
+                  effectivePixivFilters(
+                    filters,
+                    pixivMetric === 'workCount' &&
+                      pixiv.data?.metadata.countMethod === 'chinese_base_tag_year_total',
+                  ),
                 )
               : records
           }
@@ -1386,6 +1501,8 @@ export default function App() {
           knownCountOperators={knownCountOperators}
           favorite={favorites.has(detail.id)}
           onFavorite={() => toggleFavorite(detail.id)}
+          hidden={!favoritesOnly && isOperatorHidden(currentHiddenSet, detail.id)}
+          onToggleHide={!favoritesOnly ? () => handleToggleHide(scope, detail.id) : undefined}
           onClose={() => setDetail(null)}
         />
       )}
@@ -1427,6 +1544,8 @@ function OperatorDetail({
   knownCountOperators,
   favorite,
   onFavorite,
+  hidden = false,
+  onToggleHide,
   onClose,
 }: {
   operator: Operator;
@@ -1440,6 +1559,8 @@ function OperatorDetail({
   knownCountOperators?: Set<string>;
   favorite: boolean;
   onFavorite: () => void;
+  hidden?: boolean;
+  onToggleHide?: () => void;
   onClose: () => void;
 }) {
   const row = rankOperators(
@@ -1485,14 +1606,30 @@ function OperatorDetail({
         ))}
         <span>{operator.originalGender}</span>
       </div>
-      <button
-        className={`outline-button full-width favorite-button ${favorite ? 'is-favorite' : ''}`}
-        aria-pressed={favorite}
-        onClick={onFavorite}
-      >
-        <Heart size={16} fill={favorite ? 'currentColor' : 'none'} aria-hidden="true" />
-        {favorite ? '已关注 · 点击取消' : '关注这位干员'}
-      </button>
+      <div className="detail-actions">
+        <button
+          className={`outline-button full-width favorite-button ${favorite ? 'is-favorite' : ''}`}
+          aria-pressed={favorite}
+          onClick={onFavorite}
+        >
+          <Heart size={16} fill={favorite ? 'currentColor' : 'none'} aria-hidden="true" />
+          {favorite ? '已关注 · 点击取消' : '关注这位干员'}
+        </button>
+        {onToggleHide && (
+          <button
+            className={`outline-button full-width hide-operator-button ${hidden ? 'is-hidden-operator' : ''}`}
+            aria-pressed={hidden}
+            onClick={onToggleHide}
+          >
+            {hidden ? (
+              <Eye size={16} aria-hidden="true" />
+            ) : (
+              <EyeOff size={16} aria-hidden="true" />
+            )}
+            {hidden ? '已隐藏 · 点击恢复' : '隐藏这位干员'}
+          </button>
+        )}
+      </div>
       <div className="detail-total">
         <span>
           累计

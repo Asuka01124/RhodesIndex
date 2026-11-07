@@ -65,9 +65,13 @@ export function rankOperators(
   sort: 'desc' | 'asc' = 'desc',
   favorites?: Set<string>,
   knownCountOperators?: Set<string>,
+  hidden?: ReadonlySet<string>,
 ): RankedOperator[] {
   const filtered = operators.filter(
-    (o) => matchesOperator(o, filters, query) && (!favorites || favorites.has(o.id)),
+    (o) =>
+      !hidden?.has(o.id) &&
+      matchesOperator(o, filters, query) &&
+      (!favorites || favorites.has(o.id)),
   );
   const index = new Map<string, RankedOperator>(
     filtered.map((operator) => [

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filterPixivRecords, validatePixivSummary } from './pixiv.ts';
+import { effectivePixivFilters, filterPixivRecords, validatePixivSummary } from './pixiv.ts';
 import { EMPTY_FILTERS, rankOperators } from './domain.ts';
 import type { HeatRecord, Operator } from './types.ts';
 
@@ -146,4 +146,102 @@ test('列表完整而当前年份或筛选没有作品时为真实零，未采�
   assert.equal(rows[0].yearly[2026], 0);
   assert.equal(rows[1].available, false);
   assert.equal(rows[1].yearly[2026], null);
+});
+
+function annualSnapshot() {
+  return {
+    schemaVersion: 1,
+    yearBasis: 'publication_year',
+    records: [base],
+    countRecords: ['绘画', '小说'].map((workType, i) => ({
+      ...base,
+      year: 2019,
+      workType,
+      rating: '全部分级',
+      workCount: i ? 0 : 37,
+      likes: null,
+      views: null,
+      bookmarks: null,
+      comments: null,
+      sourceUrls: ['https://www.pixiv.net/tags/干员/artworks?scd=2019-01-01&ecd=2019-12-31'],
+    })),
+    metadata: {
+      kind: 'pixiv_completed_operators',
+      generatedAt: base.observedAt,
+      operatorIds: ['operator'],
+      workCount: 1,
+      countOperatorIds: ['operator'],
+      countMethod: 'chinese_base_tag_year_total',
+      countYearBasis: 'pixiv_jst_search_year',
+      countYears: [2019],
+      countGeneratedAt: base.observedAt,
+    },
+  };
+}
+
+test('中文本体年度原生数量保留真实零，按年合并绘画和小说且不覆盖互动', () => {
+  const data = validatePixivSummary(annualSnapshot());
+  assert.equal(data.records[0].views, 10);
+  assert.equal(data.countRecords![1].workCount, 0);
+  const row = rankOperators(
+    [operator],
+    data.countRecords!,
+    'pixiv',
+    'workCount',
+    [2019],
+    EMPTY_FILTERS,
+    '',
+  )[0];
+  assert.equal(row.total, 37);
+  assert.equal(
+    rankOperators([operator], data.countRecords!, 'pixiv', 'views', [2019], EMPTY_FILTERS, '')[0]
+      .available,
+    false,
+  );
+});
+
+test('年度数量拒绝不完整覆盖、虚构分级、互动指标和全局去重总数', () => {
+  const snapshot = annualSnapshot();
+  assert.throws(() =>
+    validatePixivSummary({ ...snapshot, countRecords: snapshot.countRecords.slice(0, 1) }),
+  );
+  assert.throws(() =>
+    validatePixivSummary({
+      ...snapshot,
+      countRecords: snapshot.countRecords.map((r) => ({ ...r, rating: '全年龄' })),
+    }),
+  );
+  assert.throws(() =>
+    validatePixivSummary({
+      ...snapshot,
+      countRecords: snapshot.countRecords.map((r) => ({ ...r, views: 0 })),
+    }),
+  );
+  assert.throws(() =>
+    validatePixivSummary({ ...snapshot, metadata: { ...snapshot.metadata, countWorkCount: 37 } }),
+  );
+  assert.throws(() =>
+    validatePixivSummary({ ...snapshot, metadata: { ...snapshot.metadata, countYears: [2020] } }),
+  );
+});
+
+test('切换年度作品数后忽略旧分级和细分类筛选，保留干员筛选及原偏好', () => {
+  const old = { ...EMPTY_FILTERS, professions: ['狙击'], ratings: ['R-18'], workTypes: ['插画'] };
+  const filters = effectivePixivFilters(old, true);
+  const data = validatePixivSummary(annualSnapshot());
+  assert.equal(
+    rankOperators(
+      [operator],
+      filterPixivRecords(data.countRecords!, filters),
+      'pixiv',
+      'workCount',
+      [2019],
+      filters,
+      '',
+    )[0].total,
+    37,
+  );
+  assert.deepEqual(old.ratings, ['R-18']);
+  assert.equal(effectivePixivFilters(old, false), old);
+  assert.deepEqual(effectivePixivFilters({ ...old, workTypes: ['绘画'] }, false).workTypes, []);
 });

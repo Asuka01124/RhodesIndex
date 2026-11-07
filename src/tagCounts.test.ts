@@ -184,3 +184,29 @@ test('缺失形态必须标明部分小计，不补零，也不能省略缺失�
   assert.equal(validateTagCounts(dataset([merged])).records[0].workCount, 10);
   assert.throws(() => validateTagCounts(dataset([{ ...merged, lowerBound: false }])));
 });
+test('隐藏干员过滤对应行，合并形态任意成员被隐藏时整行隐藏', () => {
+  const separate = rankTagCounts(
+    operators,
+    [row('base', 95414), row('medical', 3)],
+    EMPTY_FILTERS,
+    '',
+    'desc',
+    undefined,
+    new Set(['base']),
+  );
+  assert.deepEqual(
+    separate.map((r) => r.operator.id),
+    ['medical'],
+  );
+
+  const mergedHiddenByMember = rankTagCounts(
+    operators,
+    [singleRow(10)],
+    EMPTY_FILTERS,
+    '',
+    'desc',
+    undefined,
+    new Set(['medical']),
+  );
+  assert.equal(mergedHiddenByMember.length, 0);
+});
