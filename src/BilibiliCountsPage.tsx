@@ -798,10 +798,6 @@ export function BilibiliCountsPage({
         </section>
         <footer className="page-footer">
           <span>为喜欢的干员，记录每一次回响。</span>
-          <button onClick={onInfo}>
-            统计口径与数据来源
-            <ArrowUpRight size={12} aria-hidden="true" />
-          </button>
         </footer>
       </main>
       {detail && (

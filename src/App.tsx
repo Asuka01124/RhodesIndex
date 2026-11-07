@@ -10,7 +10,6 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
-  CircleHelp,
   Database,
   Grid2X2,
   Heart,
@@ -784,18 +783,6 @@ export default function App() {
             <span>我的关注</span>
             <small>{favorites.size}</small>
           </button>
-          <button
-            title="数据与来源"
-            className="nav-item"
-            onClick={() => {
-              setDataOpen(true);
-              setMobileMenu(false);
-            }}
-          >
-            <Database size={17} strokeWidth={1.5} aria-hidden="true" />
-            <span>数据与来源</span>
-            <ArrowUpRight size={13} aria-hidden="true" />
-          </button>
           <div className="sidebar-divider" />
           <div className="sidebar-footnote">
             <span>
@@ -844,7 +831,6 @@ export default function App() {
                 setPixivMetric(nextPixivMetric);
                 setDetail(op);
               }}
-              onOpenDataInfo={() => setDataOpen(true)}
             />
           ) : isTagSummary ? (
             <BilibiliCountsPage
@@ -1338,11 +1324,6 @@ export default function App() {
                 </section>
                 <footer className="page-footer">
                   <span>为喜欢的干员，记录每一次回响。</span>
-                  <button onClick={() => setDataOpen(true)}>
-                    <CircleHelp size={13} aria-hidden="true" />
-                    统计口径与数据来源
-                    <ArrowUpRight size={12} aria-hidden="true" />
-                  </button>
                 </footer>
               </main>
             </>

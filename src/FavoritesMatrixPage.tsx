@@ -3,7 +3,6 @@ import type { RefObject } from 'react';
 import {
   ArrowDown,
   ArrowUp,
-  ArrowUpRight,
   ChevronDown,
   Heart,
   Menu,
@@ -112,7 +111,6 @@ export function FavoritesMatrixPage({
   mobileMenu,
   onToggleMenu,
   onOpenPixivDetail,
-  onOpenDataInfo,
 }: {
   operators: Operator[];
   favorites: Set<string>;
@@ -132,7 +130,6 @@ export function FavoritesMatrixPage({
   mobileMenu: boolean;
   onToggleMenu: () => void;
   onOpenPixivDetail: (operator: Operator, metric: Metric) => void;
-  onOpenDataInfo: () => void;
 }) {
   const [sortPlatform, setSortPlatform] = useState<MatrixPlatform>('bilibili');
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
@@ -676,10 +673,6 @@ export function FavoritesMatrixPage({
 
         <footer className="page-footer">
           <span>为喜欢的干员，记录每一次回响。</span>
-          <button onClick={onOpenDataInfo}>
-            统计口径与数据来源
-            <ArrowUpRight size={12} aria-hidden="true" />
-          </button>
         </footer>
       </main>
 
