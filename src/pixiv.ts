@@ -7,6 +7,7 @@ export const PIXIV_METRICS: { value: Metric; label: string }[] = [
   { value: 'bookmarks', label: '收藏' },
   { value: 'comments', label: '评论' },
 ];
+export const VISIBLE_PIXIV_METRICS = PIXIV_METRICS.filter(({ value }) => value === 'workCount');
 export const PIXIV_WORK_TYPES = ['插画', '漫画', '动图', '小说', '未标注'];
 export const PIXIV_RATINGS = ['全年龄', 'R-18', 'R-18G', '未标注'];
 export const PIXIV_YEAR_WORK_TYPES = ['绘画', '小说'];

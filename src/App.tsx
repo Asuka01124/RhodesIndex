@@ -45,7 +45,12 @@ import { PLATFORMS, YEAR_COLORS } from './data';
 import { BrandIcon, Modal, RankingNotice, Segmented } from './ui';
 import { FilterPanel } from './Filters';
 import { preloadTagSnapshots, usePixivSummary } from './useTagCounts';
-import { effectivePixivFilters, filterPixivRecords, PIXIV_METRICS } from './pixiv';
+import {
+  effectivePixivFilters,
+  filterPixivRecords,
+  PIXIV_METRICS,
+  VISIBLE_PIXIV_METRICS,
+} from './pixiv';
 import { SidebarHighlight } from './SidebarHighlight';
 import { BilibiliCountsPage, BilibiliCountInfo } from './BilibiliCountsPage';
 import { CollaborationToggle } from './CollaborationToggle';
@@ -134,7 +139,7 @@ export default function App() {
     initialParams.get('metric') === 'views' ? 'views' : 'likes',
   );
   const [pixivMetric, setPixivMetric] = useState<Metric>(
-    PIXIV_METRICS.find((option) => option.value === initialParams.get('metric'))?.value ??
+    VISIBLE_PIXIV_METRICS.find((option) => option.value === initialParams.get('metric'))?.value ??
       'workCount',
   );
   const metric = scope === 'pixiv' ? pixivMetric : generalMetric;
@@ -910,7 +915,7 @@ export default function App() {
                         label="Pixiv 热度指标"
                         value={pixivMetric}
                         onChange={setPixivMetric}
-                        options={PIXIV_METRICS}
+                        options={VISIBLE_PIXIV_METRICS}
                         className="pixiv-metrics"
                       />
                     )}

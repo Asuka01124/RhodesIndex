@@ -36,7 +36,7 @@ import {
   useSklandTagCounts,
   usePixivSummary,
 } from './useTagCounts';
-import { PIXIV_METRICS } from './pixiv';
+import { VISIBLE_PIXIV_METRICS } from './pixiv';
 import { lofterDisplayRows } from './lofterCounts';
 import { douyinDisplayRows, douyinRoster } from './douyinCounts';
 import { hideAmbiguousDouyinTopics } from './douyinAmbiguity';
@@ -464,7 +464,7 @@ export function FavoritesMatrixPage({
                   label="Pixiv 统计指标"
                   value={pixivMetric}
                   onChange={setPixivMetric}
-                  options={PIXIV_METRICS}
+                  options={VISIBLE_PIXIV_METRICS}
                   className="pixiv-metrics"
                 />
               )}
