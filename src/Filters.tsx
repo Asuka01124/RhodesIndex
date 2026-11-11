@@ -90,9 +90,6 @@ export function FilterPanel({
         </button>
       </div>
       <div className="filter-body">
-        {showPixivFilters && pixivAnnualCounts && (
-          <p>绘画包含插画、漫画和动图；年度作品数暂不支持分级筛选。</p>
-        )}
         {showPixivFilters &&
           (
             [
